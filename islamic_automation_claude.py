@@ -79,7 +79,7 @@ def generate_islamic_content():
         """
         
         message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             messages=[
                 {"role": "user", "content": prompt}
@@ -178,27 +178,25 @@ def get_peaceful_islamic_image(theme="mosque"):
     
     query = search_terms.get(theme, search_terms['mosque'])
     
-    try:
-        # Unsplash API - free, no auth needed for basic use
-        url = f"https://api.unsplash.com/photos/random?query={query}&orientation=portrait&w=1080&h=1920"
-        
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code == 200:
-            image_url = response.json()['urls']['full']
-            
-            # Download image
-            image_response = requests.get(image_url, timeout=10)
-            image_path = f"{IMAGE_DIR}/background_{datetime.now().timestamp()}.jpg"
-            
-            with open(image_path, 'wb') as f:
-                f.write(image_response.content)
-            
-            print(f"✅ Downloaded Islamic background: {image_path}")
-            return image_path
-    
-    except Exception as e:
-        print(f"⚠️ Could not fetch from Unsplash: {e}")
+    unsplash_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
+    if unsplash_key:
+        try:
+            url = f"https://api.unsplash.com/photos/random?query={query}&orientation=portrait&w=1080&h=1920"
+            headers = {"Authorization": f"Client-ID {unsplash_key}"}
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                image_url = response.json()["urls"]["full"]
+                image_response = requests.get(image_url, timeout=30)
+                image_path = f"{IMAGE_DIR}/background_{datetime.now().timestamp()}.jpg"
+                with open(image_path, "wb") as f:
+                    f.write(image_response.content)
+                print(f"✅ Downloaded Islamic background: {image_path}")
+                return image_path
+        except Exception as e:
+            print(f"⚠️ Could not fetch from Unsplash: {e}")
+    else:
+        print("⚠️ UNSPLASH_ACCESS_KEY not set — using generated background")
     
     # Fallback: Create simple background
     return create_fallback_image()
@@ -431,12 +429,25 @@ def create_video(background_image, music_path, output_path):
 # STEP 6: UPLOAD TO YOUTUBE
 # ============================================================================
 
+GOOGLE_CREDENTIALS_PATH = "/app/google_credentials.json"
+YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+
+def _get_youtube_client():
+    creds = Credentials.from_service_account_file(
+        GOOGLE_CREDENTIALS_PATH, scopes=YOUTUBE_SCOPES
+    )
+    return build("youtube", "v3", credentials=creds)
+
+
 def upload_to_youtube(video_path, title, description, tags):
     """
-    Uploads video to YouTube Shorts
+    Uploads video to YouTube Shorts using service account OAuth credentials.
+    The service account must have the channel granted via domain-wide delegation
+    or the channel must be a YouTube Brand Account linked to the GCP project.
     """
     try:
-        youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+        youtube = _get_youtube_client()
         
         body = {
             'snippet': {
@@ -477,33 +488,50 @@ def upload_to_youtube(video_path, title, description, tags):
 # STEP 7: UPLOAD TO INSTAGRAM (OPTIONAL)
 # ============================================================================
 
-def upload_to_instagram(video_path, caption):
+def upload_to_instagram(video_public_url, caption):
     """
-    Uploads to Instagram Reels (optional)
+    Uploads to Instagram Reels via the Graph API.
+    video_public_url must be a publicly accessible HTTPS URL — Instagram
+    cannot reach local file paths.  Host the video (e.g. S3, GCS, CDN)
+    and pass the URL here, or set INSTAGRAM_VIDEO_HOST_URL to skip local upload.
     """
     if not INSTAGRAM_ACCESS_TOKEN or not INSTAGRAM_BUSINESS_ACCOUNT_ID:
         print("⚠️ Instagram upload skipped (not configured)")
         return None
-    
+
+    if not video_public_url or not video_public_url.startswith("https://"):
+        print("⚠️ Instagram upload skipped (no public HTTPS video URL available)")
+        return None
+
     try:
-        url = f"https://graph.instagram.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
-        
-        files = {
-            'video_url': (None, video_path),
-            'media_type': (None, 'REELS'),
-            'caption': (None, caption),
-            'access_token': (None, INSTAGRAM_ACCESS_TOKEN)
+        # Step 1 — create media container
+        container_url = f"https://graph.instagram.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
+        payload = {
+            "video_url": video_public_url,
+            "media_type": "REELS",
+            "caption": caption,
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
         }
-        
-        response = requests.post(url, files=files, timeout=30)
-        
-        if response.status_code == 200:
-            print(f"✅ Posted to Instagram Reels!")
-            return response.json().get('id')
-        else:
-            print(f"⚠️ Instagram upload note: {response.text}")
+        response = requests.post(container_url, data=payload, timeout=30)
+
+        if response.status_code != 200:
+            print(f"⚠️ Instagram container creation failed: {response.text}")
             return None
-    
+
+        creation_id = response.json().get("id")
+
+        # Step 2 — publish
+        publish_url = f"https://graph.instagram.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
+        publish_payload = {"creation_id": creation_id, "access_token": INSTAGRAM_ACCESS_TOKEN}
+        pub_response = requests.post(publish_url, data=publish_payload, timeout=30)
+
+        if pub_response.status_code == 200:
+            print("✅ Posted to Instagram Reels!")
+            return pub_response.json().get("id")
+        else:
+            print(f"⚠️ Instagram publish failed: {pub_response.text}")
+            return None
+
     except Exception as e:
         print(f"⚠️ Instagram upload skipped: {e}")
         return None
@@ -574,8 +602,10 @@ def main():
     )
     
     # STEP 7: Upload to Instagram
+    # Instagram requires a public HTTPS URL — set INSTAGRAM_VIDEO_HOST_URL if you host videos externally
     print("\n📸 Step 7: Uploading to Instagram Reels...")
-    instagram_id = upload_to_instagram(video_path, content_data['instagram_caption'])
+    instagram_video_url = os.getenv("INSTAGRAM_VIDEO_HOST_URL", "")
+    instagram_id = upload_to_instagram(instagram_video_url, content_data['instagram_caption'])
     
     # Cleanup
     print("\n🧹 Cleaning up temporary files...")

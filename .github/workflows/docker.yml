@@ -26,6 +26,8 @@ jobs:
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+          INSTAGRAM_VIDEO_HOST_URL: ${{ secrets.INSTAGRAM_VIDEO_HOST_URL }}
         run: |
           docker run --rm \
             -e YOUTUBE_API_KEY \
@@ -34,4 +36,6 @@ jobs:
             -e INSTAGRAM_BUSINESS_ACCOUNT_ID \
             -e INSTAGRAM_ACCESS_TOKEN \
             -e GOOGLE_CREDENTIALS_JSON \
+            -e UNSPLASH_ACCESS_KEY \
+            -e INSTAGRAM_VIDEO_HOST_URL \
             islamic-automation
