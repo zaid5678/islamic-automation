@@ -1,0 +1,37 @@
+name: Build & Run Islamic Automation
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"   # daily at 06:00 UTC — adjust as needed
+  workflow_dispatch:        # manual trigger from GitHub UI
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t islamic-automation .
+
+      - name: Run container
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: |
+          docker run --rm \
+            -e YOUTUBE_API_KEY \
+            -e YOUTUBE_CHANNEL_ID \
+            -e CLAUDE_API_KEY \
+            -e INSTAGRAM_BUSINESS_ACCOUNT_ID \
+            -e INSTAGRAM_ACCESS_TOKEN \
+            -e GOOGLE_CREDENTIALS_JSON \
+            islamic-automation

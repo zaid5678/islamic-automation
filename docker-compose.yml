@@ -1,0 +1,8 @@
+version: "3.9"
+
+services:
+  islamic-automation:
+    build: .
+    env_file:
+      - .env   # create from .env.example — never commit this file
+    restart: unless-stopped
