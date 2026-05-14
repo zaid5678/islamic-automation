@@ -35,6 +35,9 @@ jobs:
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
           UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           INSTAGRAM_VIDEO_HOST_URL: ${{ secrets.INSTAGRAM_VIDEO_HOST_URL }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
           docker run --rm \
             -e YOUTUBE_API_KEY \
@@ -45,6 +48,9 @@ jobs:
             -e GOOGLE_CREDENTIALS_JSON \
             -e UNSPLASH_ACCESS_KEY \
             -e INSTAGRAM_VIDEO_HOST_URL \
+            -e YOUTUBE_CLIENT_ID \
+            -e YOUTUBE_CLIENT_SECRET \
+            -e YOUTUBE_REFRESH_TOKEN \
             islamic-automation
 
       # ─── STEP 6.6 equivalent: Email Notification on success ────────────────

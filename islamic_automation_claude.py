@@ -9,7 +9,7 @@ import json
 import requests
 import anthropic
 from datetime import datetime
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -429,14 +429,19 @@ def create_video(background_image, music_path, output_path):
 # STEP 6: UPLOAD TO YOUTUBE
 # ============================================================================
 
-GOOGLE_CREDENTIALS_PATH = "/app/google_credentials.json"
-YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
-
-
 def _get_youtube_client():
-    creds = Credentials.from_service_account_file(
-        GOOGLE_CREDENTIALS_PATH, scopes=YOUTUBE_SCOPES
+    # Uses OAuth2 refresh token so uploads go to YOUR channel, not a service account.
+    # Set YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN as secrets.
+    # Run get_youtube_token.py once locally to generate the refresh token.
+    creds = Credentials(
+        token=None,
+        refresh_token=os.getenv("YOUTUBE_REFRESH_TOKEN"),
+        client_id=os.getenv("YOUTUBE_CLIENT_ID"),
+        client_secret=os.getenv("YOUTUBE_CLIENT_SECRET"),
+        token_uri="https://oauth2.googleapis.com/token",
+        scopes=["https://www.googleapis.com/auth/youtube.upload"],
     )
+    creds.refresh(Request())
     return build("youtube", "v3", credentials=creds)
 
 
