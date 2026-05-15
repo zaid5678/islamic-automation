@@ -72,11 +72,14 @@ Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
 Important:
 - Make hook_text SHORT (one sentence, max 10 words)
 - Make hook_text compelling (makes them want to read more)
-- Make descriptions detailed and meaningful
-- Focus on universal Islamic teachings (patience, gratitude, kindness, etc)
-- Include relevant Quranic verses or Hadith
+- Make descriptions detailed and meaningful — 150 to 250 words, engaging but not overwhelming
+- Start with the Quranic verse or Hadith, then explain it, then give a practical daily lesson
+- Write like a knowledgeable Muslim sharing genuine wisdom, not a content bot
+- Focus on universal Islamic teachings (patience, gratitude, kindness, tawakkul, etc)
+- Include relevant Quranic verses or Hadith with proper references
 - Make it authentic and respectful
-- Include monetization elements (affiliate suggestions in description)"""
+- End with a short dua or reminder to share with others
+- Do NOT include any affiliate links, sponsor sections, or resource lists"""
 
 
 def generate_islamic_content():
@@ -148,11 +151,6 @@ Identify one worry you're carrying. Do what you can to address it, then surrende
 ---
 
 🤲 SHARE THIS WITH SOMEONE WHO NEEDS IT
-
-🔗 RESOURCES:
-• Islamic Education Course: [AFFILIATE]
-• Quran App: [AFFILIATE]
-• Meditation for Muslims: [AFFILIATE]
 
 📮 SUBSCRIBE FOR DAILY ISLAMIC TEACHINGS
 🔔 TURN ON NOTIFICATIONS
@@ -411,68 +409,56 @@ def create_text_overlay(hook_text, hadith_verse, background_path):
 # STEP 4: GET NASHEED / ISLAMIC MUSIC
 # ============================================================================
 
-# Public-domain / Creative Commons nasheeds from Archive.org
-NASHEED_SOURCES = [
-    {
-        "name": "tala_al_badru.mp3",
-        "url": "https://archive.org/download/TalaAlBadruAlayna/Tala%20Al%20Badru%20Alayna.mp3",
-    },
-    {
-        "name": "nasheed_allahu.mp3",
-        "url": "https://archive.org/download/NasheedAllahu/nasheed.mp3",
-    },
-    {
-        "name": "peaceful_nasheed.mp3",
-        "url": "https://archive.org/download/IslamicNasheedCollection/01.mp3",
-    },
-]
+# Primary nasheed — downloaded once and reused each run
+NASHEED_YOUTUBE_URL = "https://www.youtube.com/watch?v=0RR1GLQ65Vs"
+NASHEED_CACHED_PATH = f"{MUSIC_DIR}/nasheed_primary.mp3"
 
 
 def get_islamic_music():
-    random.shuffle(NASHEED_SOURCES)
-    for source in NASHEED_SOURCES:
-        try:
-            r = requests.get(source["url"], timeout=20, stream=True)
-            if r.status_code == 200:
-                path = f"{MUSIC_DIR}/{source['name']}"
-                with open(path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                print(f"✅ Downloaded nasheed: {source['name']}")
-                return path
-        except Exception:
-            continue
+    """Download nasheed from YouTube via yt-dlp, cache for reuse."""
+    # Use cached file if already downloaded
+    if os.path.exists(NASHEED_CACHED_PATH) and os.path.getsize(NASHEED_CACHED_PATH) > 100_000:
+        print(f"✅ Using cached nasheed")
+        return NASHEED_CACHED_PATH
 
-    print("⚠️ Nasheed download failed — generating peaceful ambient music")
+    try:
+        result = subprocess.run([
+            "yt-dlp",
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "--no-playlist",
+            "-o", NASHEED_CACHED_PATH.replace(".mp3", ".%(ext)s"),
+            NASHEED_YOUTUBE_URL,
+        ], capture_output=True, text=True, timeout=120)
+
+        if result.returncode == 0 and os.path.exists(NASHEED_CACHED_PATH):
+            print(f"✅ Downloaded nasheed from YouTube")
+            return NASHEED_CACHED_PATH
+        else:
+            print(f"⚠️ yt-dlp failed: {result.stderr[-300:]}")
+    except Exception as e:
+        print(f"⚠️ Nasheed download error: {e}")
+
+    print("⚠️ Falling back to generated ambient music")
     return create_ambient_music()
 
 
 def create_ambient_music():
-    """
-    Generates a peaceful Islamic-style ambient drone using ffmpeg.
-    Uses 432 Hz + harmonics — sounds meditative and calming.
-    """
+    """Peaceful harmonic ambient fallback — only used if yt-dlp fails."""
     try:
         path = f"{MUSIC_DIR}/ambient_islamic.mp3"
-        # Three-frequency harmonic chord (432 Hz, 528 Hz, 639 Hz)
-        # with slow fade in/out — sounds like a gentle oud/nay drone
         subprocess.run([
             "ffmpeg",
-            "-f", "lavfi",
-            "-i", "sine=frequency=432:duration=65",
-            "-f", "lavfi",
-            "-i", "sine=frequency=528:duration=65",
-            "-f", "lavfi",
-            "-i", "sine=frequency=639:duration=65",
+            "-f", "lavfi", "-i", "sine=frequency=432:duration=65",
+            "-f", "lavfi", "-i", "sine=frequency=528:duration=65",
+            "-f", "lavfi", "-i", "sine=frequency=639:duration=65",
             "-filter_complex",
             "[0][1][2]amix=inputs=3:duration=first,"
-            "afade=t=in:st=0:d=4,"
-            "afade=t=out:st=60:d=4,"
-            "volume=0.25",
-            "-codec:a", "libmp3lame", "-q:a", "4",
-            "-y", path,
+            "afade=t=in:st=0:d=4,afade=t=out:st=60:d=4,volume=0.25",
+            "-codec:a", "libmp3lame", "-q:a", "4", "-y", path,
         ], capture_output=True, timeout=30)
-        print(f"✅ Generated ambient music")
+        print(f"✅ Generated ambient music fallback")
         return path
     except Exception as e:
         print(f"⚠️ Error generating ambient music: {e}")
