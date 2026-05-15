@@ -115,6 +115,7 @@ def generate_islamic_content():
             "messages": [{"role": "user", "content": GEMINI_PROMPT}],
             "max_tokens": 4096,
             "temperature": 0.9,
+            "response_format": {"type": "json_object"},
         }
         response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
@@ -705,7 +706,7 @@ def upload_to_instagram(video_public_url, caption):
 
     try:
         # Step 1 — create media container
-        container_url = f"https://graph.instagram.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
+        container_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
         payload = {
             "video_url": video_public_url,
             "media_type": "REELS",
@@ -721,7 +722,7 @@ def upload_to_instagram(video_public_url, caption):
         creation_id = response.json().get("id")
 
         # Step 2 — publish
-        publish_url = f"https://graph.instagram.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
+        publish_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
         publish_payload = {"creation_id": creation_id, "access_token": INSTAGRAM_ACCESS_TOKEN}
         pub_response = requests.post(publish_url, data=publish_payload, timeout=30)
 
