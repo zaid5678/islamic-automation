@@ -872,7 +872,8 @@ def main():
     # STEP 7: Upload to GCS → Instagram → clean up GCS
     print("\n📸 Step 7: Uploading to Instagram Reels via GCS...")
     gcs_url, gcs_blob = upload_video_to_gcs(video_path)
-    instagram_id = upload_to_instagram(gcs_url, content_data['instagram_caption'])
+    ig_caption = content_data.get('instagram_caption') or content_data.get('youtube_description', '')
+    instagram_id = upload_to_instagram(gcs_url, ig_caption)
     delete_from_gcs(gcs_blob)
 
     # Cleanup local files
