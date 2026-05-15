@@ -55,52 +55,31 @@ for directory in [MUSIC_DIR, IMAGE_DIR, VIDEO_DIR]:
 # STEP 1: GENERATE CONTENT WITH GEMINI (FREE)
 # ============================================================================
 
-GEMINI_PROMPT = '''Generate ONE Islamic teaching for a YouTube Short/Instagram Reel.
+GEMINI_PROMPT = """Generate ONE Islamic teaching for a YouTube Short/Instagram Reel.
 
-Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
+Return ONLY a valid JSON object. Use \\n for line breaks inside string values — never use actual newlines inside a JSON string. No markdown, no code blocks.
+
+JSON structure:
 {
-    "topic": "Topic name",
-    "arabic_term": "Arabic word for the topic if applicable, else empty string",
-    "hadith_verse": "Short reference only e.g. Quran 2:153",
-    "hook_text": "One short punchy sentence, max 8 words, no quotes",
-    "image_theme": "mosque OR nature OR islamic-art OR sunset",
-    "daily_lesson": "2-3 sentences. Practical action the viewer can take today.",
-    "share_cta": "SHARE THIS WITH SOMEONE WHO NEEDS [TOPIC] IN THEIR LIFE",
-    "verses_hadiths": ["List of 6-8 key verses and hadiths with full text and references"],
-    "hashtags": "#IslamicTeachings #Quran #DailyReminder ... (15-20 relevant hashtags)",
-    "youtube_description": "SEE FORMAT BELOW",
-    "instagram_caption": "Same opening section as youtube_description but shorter — first 3 paragraphs only, then hashtags"
+  "topic": "Topic name",
+  "arabic_term": "Arabic word if applicable, else empty string",
+  "hadith_verse": "Short reference only e.g. Quran 2:153",
+  "hook_text": "One punchy sentence max 8 words no quotes",
+  "image_theme": "mosque OR nature OR islamic-art OR sunset",
+  "youtube_description": "Full description — see format below",
+  "instagram_caption": "First 3 paragraphs of youtube_description then hashtags"
 }
 
-For youtube_description follow this EXACT format (fill in the [brackets]):
+For youtube_description use this format with \\n for line breaks:
 
-✨ [TOPIC IN CAPS] ([ARABIC TERM]) ✨
-📖 [Primary Quran verse reference] - "[Full verse text]"
-
-🕌 FULL TEACHING:
-[6-8 detailed paragraphs covering: Islamic meaning, examples from Prophet life, types/aspects, specific hadiths with references, connection to modern life. Each paragraph 3-5 sentences. Write like a scholar sharing genuine wisdom.]
-
-💡 LESSON FOR TODAY:
-[2-3 sentences. Specific, practical, actionable.]
-
-🤲 [share_cta]
-
-📖 MAIN VERSES & HADITHS:
-[verses_hadiths as bullet list with ✦ prefix, each on its own line]
-
-📮 SUBSCRIBE FOR DAILY ISLAMIC TEACHINGS
-🔔 TURN ON NOTIFICATIONS
-💬 SHARE YOUR THOUGHTS IN THE COMMENTS
-
-[hashtags]
+✨ [TOPIC IN CAPS] ([ARABIC TERM]) ✨\\n📖 [Verse ref] - [Full verse text]\\n\\n🕌 FULL TEACHING:\\n[6-8 paragraphs, each 3-5 sentences, separated by \\n\\n. Cover: Islamic meaning, Prophet examples, types/aspects, hadiths with references, modern relevance. Write like a knowledgeable Muslim, not a content bot.]\\n\\n💡 LESSON FOR TODAY:\\n[2-3 practical sentences]\\n\\n🤲 SHARE THIS WITH SOMEONE WHO NEEDS [TOPIC]\\n\\n📖 MAIN VERSES & HADITHS:\\n✦ [verse 1]\\n✦ [verse 2]\\n✦ [hadith 1]\\n✦ [hadith 2]\\n✦ [hadith 3]\\n\\n📮 SUBSCRIBE FOR DAILY ISLAMIC TEACHINGS\\n🔔 TURN ON NOTIFICATIONS\\n💬 SHARE YOUR THOUGHTS IN THE COMMENTS\\n\\n#IslamicTeachings #Quran #DailyReminder #Islam #Muslim [10 more relevant hashtags]
 
 Rules:
-- hook_text: max 8 words, compelling, no quotation marks
-- hadith_verse: short reference only (e.g. "Quran 2:153")
-- Full teaching must be 400-600 words — detailed but engaging
-- Write authentically, like a knowledgeable Muslim, not a content bot
-- Do NOT include affiliate links, sponsor sections, or resource lists
-- Choose a different topic each time — vary between patience, gratitude, tawakkul, dhikr, sincerity, brotherhood, tawbah, etc.'''
+- ALL string values must use \\n not actual newlines
+- hook_text: max 8 words, no quotation marks
+- Full teaching: 400-600 words, authentic Islamic scholarship
+- No affiliate links or resource lists
+- Pick a different topic each time: patience, gratitude, tawakkul, dhikr, tawbah, sincerity, brotherhood, charity, forgiveness, etc."""
 
 
 def generate_islamic_content():
