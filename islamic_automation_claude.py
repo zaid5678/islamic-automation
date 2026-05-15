@@ -130,13 +130,41 @@ def generate_islamic_content():
             response_text = response_text[:-3]
         response_text = response_text.strip()
 
-        # Extract the JSON object robustly (handles extra text before/after)
+        # Extract the JSON object (handles extra text before/after)
         import re
         match = re.search(r'\{.*\}', response_text, re.DOTALL)
         if match:
             response_text = match.group(0)
 
-        content_data = json.loads(response_text)
+        # Fix literal control characters inside JSON string values
+        # (Groq embeds real newlines in long strings, which is invalid JSON)
+        def _fix_control_chars(s):
+            result = []
+            in_str = False
+            escaped = False
+            for ch in s:
+                if escaped:
+                    result.append(ch)
+                    escaped = False
+                elif ch == '\\':
+                    result.append(ch)
+                    escaped = True
+                elif ch == '"':
+                    result.append(ch)
+                    in_str = not in_str
+                elif in_str and ch == '\n':
+                    result.append('\\n')
+                elif in_str and ch == '\r':
+                    result.append('\\r')
+                elif in_str and ch == '\t':
+                    result.append('\\t')
+                elif in_str and ord(ch) < 0x20:
+                    result.append(f'\\u{ord(ch):04x}')
+                else:
+                    result.append(ch)
+            return ''.join(result)
+
+        content_data = json.loads(_fix_control_chars(response_text))
         print("✅ Generated content with Groq (Llama 3):")
         print(f"   Topic: {content_data['topic']}")
         print(f"   Hook: {content_data['hook_text']}")
@@ -443,8 +471,9 @@ def create_text_overlay(hook_text, hadith_verse, background_path):
             draw.text((CX, verse_y), verse_text,
                       font=fonts["verse"], fill=LGOLD, anchor="mm")
 
-        # ── Bottom CTA (pinned to safe bottom zone) ───────────────────────
-        cta_y = SAFE_BOT - 120
+        # ── CTA — halfway between verse and old bottom position ───────────
+        old_bottom = SAFE_BOT - 120          # ≈ y=1680
+        cta_y = (verse_y + old_bottom) // 2  # ≈ y=1320–1380
         draw.line([(MARGIN, cta_y - 35), (W - MARGIN, cta_y - 35)],
                   fill=(255, 255, 255, 50), width=1)
         draw.text((CX, cta_y), "Read description for the full teaching",
