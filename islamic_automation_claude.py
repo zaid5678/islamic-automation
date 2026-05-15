@@ -78,7 +78,7 @@ Important:
 def generate_islamic_content():
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-pro")
         response = model.generate_content(GEMINI_PROMPT)
         response_text = response.text.strip()
 
