@@ -6,13 +6,15 @@ One video per day, 100% free
 
 import os
 import json
+import datetime
 import requests
 import anthropic
-from datetime import datetime
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from google.cloud import storage
 import subprocess
 import random
 from pathlib import Path
@@ -29,8 +31,11 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
 
-# Claude API (FREE - built into Anthropic)
+# Claude API
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+
+# Google Cloud Storage (for temporary video hosting so Instagram can fetch it)
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "")
 
 # Output directories
 OUTPUT_DIR = "/tmp/islamic_videos"
@@ -543,6 +548,69 @@ def upload_to_instagram(video_public_url, caption):
 
 
 # ============================================================================
+# STEP 7.5: GCS TEMPORARY HOSTING (bridges Docker → Instagram)
+# ============================================================================
+
+GOOGLE_CREDENTIALS_PATH = "/app/google_credentials.json"
+
+
+def _gcs_client():
+    creds = SACredentials.from_service_account_file(
+        GOOGLE_CREDENTIALS_PATH,
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    return storage.Client(credentials=creds, project=creds.project_id)
+
+
+def upload_video_to_gcs(video_path):
+    """
+    Uploads the video to GCS and returns a signed URL valid for 1 hour.
+    Instagram will fetch the video from this URL.
+    Returns (signed_url, blob_name) or (None, None) if GCS is not configured.
+    """
+    if not GCS_BUCKET_NAME:
+        print("⚠️ GCS_BUCKET_NAME not set — Instagram upload will be skipped")
+        return None, None
+
+    try:
+        client = _gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob_name = f"islamic-videos/{os.path.basename(video_path)}"
+        blob = bucket.blob(blob_name)
+
+        blob.upload_from_filename(video_path, content_type="video/mp4")
+        print(f"✅ Uploaded video to GCS: gs://{GCS_BUCKET_NAME}/{blob_name}")
+
+        sa_creds = SACredentials.from_service_account_file(
+            GOOGLE_CREDENTIALS_PATH,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        signed_url = blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(hours=1),
+            method="GET",
+            credentials=sa_creds,
+        )
+        return signed_url, blob_name
+
+    except Exception as e:
+        print(f"❌ GCS upload failed: {e}")
+        return None, None
+
+
+def delete_from_gcs(blob_name):
+    """Removes the temporary video from GCS after Instagram has fetched it."""
+    if not GCS_BUCKET_NAME or not blob_name:
+        return
+    try:
+        client = _gcs_client()
+        client.bucket(GCS_BUCKET_NAME).blob(blob_name).delete()
+        print(f"✅ Deleted temporary GCS file: {blob_name}")
+    except Exception as e:
+        print(f"⚠️ Could not delete GCS file: {e}")
+
+
+# ============================================================================
 # MAIN ORCHESTRATION
 # ============================================================================
 
@@ -606,13 +674,13 @@ def main():
         youtube_tags
     )
     
-    # STEP 7: Upload to Instagram
-    # Instagram requires a public HTTPS URL — set INSTAGRAM_VIDEO_HOST_URL if you host videos externally
-    print("\n📸 Step 7: Uploading to Instagram Reels...")
-    instagram_video_url = os.getenv("INSTAGRAM_VIDEO_HOST_URL", "")
-    instagram_id = upload_to_instagram(instagram_video_url, content_data['instagram_caption'])
-    
-    # Cleanup
+    # STEP 7: Upload to GCS → Instagram → clean up GCS
+    print("\n📸 Step 7: Uploading to Instagram Reels via GCS...")
+    gcs_url, gcs_blob = upload_video_to_gcs(video_path)
+    instagram_id = upload_to_instagram(gcs_url, content_data['instagram_caption'])
+    delete_from_gcs(gcs_blob)
+
+    # Cleanup local files
     print("\n🧹 Cleaning up temporary files...")
     try:
         os.remove(video_path)
