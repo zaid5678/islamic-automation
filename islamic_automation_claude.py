@@ -30,8 +30,8 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Google Cloud Storage (for temporary video hosting so Instagram can fetch it)
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "")
@@ -75,23 +75,22 @@ Important:
 
 
 def generate_islamic_content():
-    """Calls Gemini REST API directly with the AI Studio API key."""
+    """Calls Groq (free) to generate Islamic content using Llama 3."""
     try:
-        payload = {
-            "contents": [{"parts": [{"text": GEMINI_PROMPT}]}],
-            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.9},
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
         }
-        response = requests.post(
-            GEMINI_URL,
-            params={"key": GEMINI_API_KEY},
-            json=payload,
-            timeout=30,
-        )
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": GEMINI_PROMPT}],
+            "max_tokens": 1024,
+            "temperature": 0.9,
+        }
+        response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
 
-        response_text = (
-            response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        )
+        response_text = response.json()["choices"][0]["message"]["content"].strip()
 
         if response_text.startswith("```json"):
             response_text = response_text[7:]
@@ -101,13 +100,13 @@ def generate_islamic_content():
             response_text = response_text[:-3]
 
         content_data = json.loads(response_text.strip())
-        print("✅ Generated content with Gemini:")
+        print("✅ Generated content with Groq (Llama 3):")
         print(f"   Topic: {content_data['topic']}")
         print(f"   Hook: {content_data['hook_text']}")
         return content_data
 
     except Exception as e:
-        print(f"❌ Error generating content with Gemini: {e}")
+        print(f"❌ Error generating content with Groq: {e}")
         return get_fallback_content()
 
 
