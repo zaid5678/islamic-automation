@@ -55,31 +55,52 @@ for directory in [MUSIC_DIR, IMAGE_DIR, VIDEO_DIR]:
 # STEP 1: GENERATE CONTENT WITH GEMINI (FREE)
 # ============================================================================
 
-GEMINI_PROMPT = """Generate ONE Islamic teaching for a YouTube Short/Instagram Reel.
+GEMINI_PROMPT = '''Generate ONE Islamic teaching for a YouTube Short/Instagram Reel.
 
 Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
 {
     "topic": "Topic name",
-    "hadith_verse": "Quran X:X or Hadith reference",
-    "hook_text": "One sentence that appears on screen - makes user want to read description",
-    "image_theme": "mosque OR calligraphy OR nature OR islamic-art OR sunset",
-    "full_teaching": "2-3 sentences explaining the Islamic concept deeply",
-    "daily_lesson": "One actionable tip the user can do today",
-    "youtube_description": "Full YouTube description with emoji, call to action, hashtags",
-    "instagram_caption": "Instagram caption with emoji and hashtags"
+    "arabic_term": "Arabic word for the topic if applicable, else empty string",
+    "hadith_verse": "Short reference only e.g. Quran 2:153",
+    "hook_text": "One short punchy sentence, max 8 words, no quotes",
+    "image_theme": "mosque OR nature OR islamic-art OR sunset",
+    "daily_lesson": "2-3 sentences. Practical action the viewer can take today.",
+    "share_cta": "SHARE THIS WITH SOMEONE WHO NEEDS [TOPIC] IN THEIR LIFE",
+    "verses_hadiths": ["List of 6-8 key verses and hadiths with full text and references"],
+    "hashtags": "#IslamicTeachings #Quran #DailyReminder ... (15-20 relevant hashtags)",
+    "youtube_description": "SEE FORMAT BELOW",
+    "instagram_caption": "Same opening section as youtube_description but shorter — first 3 paragraphs only, then hashtags"
 }
 
-Important:
-- Make hook_text SHORT (one sentence, max 10 words)
-- Make hook_text compelling (makes them want to read more)
-- Make descriptions detailed and meaningful — 150 to 250 words, engaging but not overwhelming
-- Start with the Quranic verse or Hadith, then explain it, then give a practical daily lesson
-- Write like a knowledgeable Muslim sharing genuine wisdom, not a content bot
-- Focus on universal Islamic teachings (patience, gratitude, kindness, tawakkul, etc)
-- Include relevant Quranic verses or Hadith with proper references
-- Make it authentic and respectful
-- End with a short dua or reminder to share with others
-- Do NOT include any affiliate links, sponsor sections, or resource lists"""
+For youtube_description follow this EXACT format (fill in the [brackets]):
+
+✨ [TOPIC IN CAPS] ([ARABIC TERM]) ✨
+📖 [Primary Quran verse reference] - "[Full verse text]"
+
+🕌 FULL TEACHING:
+[6-8 detailed paragraphs covering: Islamic meaning, examples from Prophet life, types/aspects, specific hadiths with references, connection to modern life. Each paragraph 3-5 sentences. Write like a scholar sharing genuine wisdom.]
+
+💡 LESSON FOR TODAY:
+[2-3 sentences. Specific, practical, actionable.]
+
+🤲 [share_cta]
+
+📖 MAIN VERSES & HADITHS:
+[verses_hadiths as bullet list with ✦ prefix, each on its own line]
+
+📮 SUBSCRIBE FOR DAILY ISLAMIC TEACHINGS
+🔔 TURN ON NOTIFICATIONS
+💬 SHARE YOUR THOUGHTS IN THE COMMENTS
+
+[hashtags]
+
+Rules:
+- hook_text: max 8 words, compelling, no quotation marks
+- hadith_verse: short reference only (e.g. "Quran 2:153")
+- Full teaching must be 400-600 words — detailed but engaging
+- Write authentically, like a knowledgeable Muslim, not a content bot
+- Do NOT include affiliate links, sponsor sections, or resource lists
+- Choose a different topic each time — vary between patience, gratitude, tawakkul, dhikr, sincerity, brotherhood, tawbah, etc.'''
 
 
 def generate_islamic_content():
@@ -92,7 +113,7 @@ def generate_islamic_content():
         payload = {
             "model": "llama-3.1-8b-instant",
             "messages": [{"role": "user", "content": GEMINI_PROMPT}],
-            "max_tokens": 1024,
+            "max_tokens": 4096,
             "temperature": 0.9,
         }
         response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
@@ -139,23 +160,40 @@ def get_fallback_content():
         "full_teaching": "Tawakkul means placing complete trust in Allah while doing your part. It doesn't mean sitting idle - it means working hard and then surrendering results to Allah. Many carry unnecessary stress trying to control outcomes. True peace comes from releasing that burden and trusting the Divine plan.",
         "daily_lesson": "Identify one worry. Do what you can to address it, then surrender the rest to Allah.",
         "youtube_description": """✨ TAWAKKUL (TRUST IN ALLAH) ✨
+📖 Quran 65:3 - "And whoever relies upon Allah — then He is sufficient for him."
 
-📖 Quran 65:3 - "Whoever trusts in Allah, then He will suffice him"
+🕌 FULL TEACHING:
+Tawakkul — complete reliance on Allah — is one of the highest stations of faith in Islam. It does not mean sitting idle and waiting for things to happen. Rather, it means doing everything within your power, then surrendering the outcome entirely to Allah with full trust in His wisdom and plan.
 
-📚 FULL TEACHING:
-Tawakkul is the art of trusting Allah completely while doing your part. The Prophet Muhammad (peace be upon him) said: "Trust in Allah, but tie your camel" - meaning work hard, then leave results to Allah.
+The Prophet Muhammad ﷺ beautifully illustrated this balance when a man asked whether he should tie his camel or leave it and trust in Allah. The Prophet replied: "Tie your camel, then put your trust in Allah" (Tirmidhi). This hadith teaches us that tawakkul is never an excuse for laziness — it is the peace that follows sincere effort.
+
+Allah says in the Quran: "And whoever relies upon Allah — then He is sufficient for him. Indeed, Allah will accomplish His purpose. Allah has already set for everything a decreed extent" (Quran 65:3). This verse reminds us that when we hand our affairs to Allah, He takes full responsibility for them.
+
+One of the most profound examples of tawakkul is the story of Hajar (RA), the wife of Prophet Ibrahim. Left alone in a barren desert with her infant son Ismail, she ran between the hills of Safa and Marwa searching for water. She took action — she did not sit still. Then Allah caused the well of Zamzam to spring forth. Her tawakkul was complete: she acted, then trusted.
+
+In our modern lives, tawakkul means applying for the job, then trusting Allah with the result. It means seeking medical treatment, then trusting Allah for healing. It means studying hard, then trusting Allah with the grade. The anxiety that grips so many of us today comes from trying to control outcomes that were never in our hands to begin with.
+
+Allah says: "Indeed, those who have believed and whose hearts are assured by the remembrance of Allah. Unquestionably, by the remembrance of Allah hearts are assured" (Quran 13:28). True tawakkul brings that assurance — a deep inner calm that no worldly circumstance can shake.
 
 💡 LESSON FOR TODAY:
-Identify one worry you're carrying. Do what you can to address it, then surrender the rest to Allah. Feel the peace that comes with letting go.
+Identify one situation you have been anxious about. Write down everything within your power to do, then do it. After that, make a sincere dua and consciously release the outcome to Allah. Say: "Hasbunallahu wa ni'mal wakeel" — Allah is sufficient for us and He is the best Disposer of affairs.
 
----
+🤲 SHARE THIS WITH SOMEONE WHO NEEDS TRUST IN ALLAH IN THEIR LIFE
 
-🤲 SHARE THIS WITH SOMEONE WHO NEEDS IT
+📖 MAIN VERSES & HADITHS:
+✦ Quran 65:3 - "And whoever relies upon Allah — then He is sufficient for him."
+✦ Quran 3:159 - "And when you have decided, then rely upon Allah. Indeed, Allah loves those who rely upon Him."
+✦ Quran 13:28 - "Unquestionably, by the remembrance of Allah hearts are assured."
+✦ Quran 9:51 - "Say: Nothing will ever befall us except what Allah has decreed for us."
+✦ Hadith: "Tie your camel, then put your trust in Allah." (Tirmidhi)
+✦ Hadith: "If you were to rely upon Allah with the reliance He is due, He would provide for you as He provides for the birds." (Tirmidhi)
+✦ Hadith: "How amazing is the affair of the believer — all of it is good for him." (Muslim)
 
 📮 SUBSCRIBE FOR DAILY ISLAMIC TEACHINGS
 🔔 TURN ON NOTIFICATIONS
+💬 SHARE YOUR THOUGHTS IN THE COMMENTS
 
-#IslamicTeachings #Quran #Tawakkul #TrustInAllah #DailyReminder #IslamicWisdom""",
+#IslamicTeachings #Tawakkul #TrustInAllah #Quran #Hadith #DailyReminder #IslamicWisdom #FaithInAllah #Islam #Muslim #MuslimCommunity #IslamicContent #DuaDaily #ProphetMuhammad #Sabr""",
         "instagram_caption": """✨ Trust in Allah's plan ✨
 
 📖 Quran 65:3
@@ -360,39 +398,58 @@ def create_text_overlay(hook_text, hadith_verse, background_path):
         WHITE = (255, 255, 255)
         LGOLD = (255, 220, 100)
         CX    = W // 2
+        MARGIN = 80          # safe zone from edges
+        SAFE_TOP = 120       # safe zone from top
+        SAFE_BOT = H - 120   # safe zone from bottom
 
-        # ── Hook text ────────────────────────────────────────────────────
-        lines   = _wrap_text(draw, hook_text, fonts["title"], 880)
-        line_h  = 90
+        # ── Hook text (capped at 3 lines, font shrinks if needed) ─────────
+        for font_size_key, max_lines in [("title", 3), ("verse", 4)]:
+            lines = _wrap_text(draw, hook_text, fonts[font_size_key], W - MARGIN * 2)
+            if len(lines) <= max_lines:
+                title_font = fonts[font_size_key]
+                break
+        lines = lines[:3]                     # hard cap — never more than 3 lines
+
+        line_h  = 92
         block_h = len(lines) * line_h
-        top     = H // 2 - block_h // 2 - 30
+        # Vertically centre the whole text block (rule+text+rule+verse+cta)
+        total_block = block_h + 60 + 60 + 70 + 160   # rough height of all elements
+        top = max(SAFE_TOP + 60, H // 2 - total_block // 2 + 60)
 
+        # Gold rule above
         ry = top - 60
-        draw.line([(CX - 280, ry), (CX + 280, ry)], fill=GOLD, width=2)
-        draw.text((CX, ry - 24), "❆", font=fonts["cta"], fill=GOLD, anchor="mm")
+        ry = max(SAFE_TOP, ry)
+        draw.line([(CX - 260, ry), (CX + 260, ry)], fill=GOLD, width=2)
+        draw.text((CX, ry - 22), "✦", font=fonts["cta"], fill=GOLD, anchor="mm")
 
         for i, line in enumerate(lines):
             y = top + i * line_h
-            draw.text((CX + 2, y + 2), line, font=fonts["title"],
+            draw.text((CX + 2, y + 2), line, font=title_font,
                       fill=(0, 0, 0, 170), anchor="mt")
-            draw.text((CX, y), line, font=fonts["title"], fill=WHITE, anchor="mt")
+            draw.text((CX, y), line, font=title_font, fill=WHITE, anchor="mt")
 
-        ry2 = top + block_h + 35
-        draw.line([(CX - 280, ry2), (CX + 280, ry2)], fill=GOLD, width=2)
-        draw.text((CX, ry2 + 24), "❆", font=fonts["cta"], fill=GOLD, anchor="mm")
+        # Gold rule below
+        ry2 = top + block_h + 30
+        draw.line([(CX - 260, ry2), (CX + 260, ry2)], fill=GOLD, width=2)
+        draw.text((CX, ry2 + 22), "✦", font=fonts["cta"], fill=GOLD, anchor="mm")
 
-        # ── Verse reference ───────────────────────────────────────────────
-        if hadith_verse:
-            draw.text((CX, ry2 + 80), hadith_verse,
+        # ── Verse reference (truncate to fit one line) ────────────────────
+        verse_y = ry2 + 75
+        if hadith_verse and verse_y + 50 < SAFE_BOT - 160:
+            # Truncate verse text to fit within frame width
+            verse_text = hadith_verse
+            while draw.textbbox((0, 0), verse_text, font=fonts["verse"])[2] > W - MARGIN * 2 and len(verse_text) > 10:
+                verse_text = verse_text[:-4] + "…"
+            draw.text((CX, verse_y), verse_text,
                       font=fonts["verse"], fill=LGOLD, anchor="mm")
 
-        # ── Bottom CTA ───────────────────────────────────────────────────
-        cta_y = H - 210
-        draw.line([(80, cta_y - 40), (W - 80, cta_y - 40)],
+        # ── Bottom CTA (pinned to safe bottom zone) ───────────────────────
+        cta_y = SAFE_BOT - 120
+        draw.line([(MARGIN, cta_y - 35), (W - MARGIN, cta_y - 35)],
                   fill=(255, 255, 255, 50), width=1)
         draw.text((CX, cta_y), "Read description for the full teaching",
                   font=fonts["cta"], fill=WHITE, anchor="mm")
-        draw.text((CX, cta_y + 58), "↓  Follow for daily reminders  ↓",
+        draw.text((CX, cta_y + 55), "↓  Follow for daily reminders  ↓",
                   font=fonts["cta"], fill=LGOLD, anchor="mm")
 
         out = f"{IMAGE_DIR}/overlay_{datetime.now().timestamp()}.png"
