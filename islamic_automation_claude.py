@@ -167,20 +167,57 @@ Share with someone 🤲
 # STEP 2: FETCH ISLAMIC BACKGROUND IMAGE
 # ============================================================================
 
-PEXELS_QUERIES = [
-    "kaaba mecca pilgrimage",
-    "grand mosque islamic architecture",
-    "mosque interior dome",
-    "masjid al haram aerial",
-    "islamic architecture golden",
-    "nature peaceful sunrise mountains",
+PEXELS_VIDEO_QUERIES = [
+    "kaaba mecca tawaf",
+    "grand mosque mecca",
+    "mosque architecture interior",
+    "islamic architecture dome",
+    "peaceful nature river forest",
+    "sunrise mountains nature",
+    "masjid nabawi medina",
 ]
 
 
 def get_peaceful_islamic_image(theme="mosque"):
-    # 1. Try Pexels (best quality Islamic content)
+    """
+    Returns (path, is_video).
+    Tries Pexels videos first, then Pexels photos, then fallback image.
+    """
+    # 1. Pexels VIDEO (best — real moving footage)
     if PEXELS_API_KEY:
-        query = random.choice(PEXELS_QUERIES)
+        query = random.choice(PEXELS_VIDEO_QUERIES)
+        try:
+            headers = {"Authorization": PEXELS_API_KEY}
+            r = requests.get(
+                "https://api.pexels.com/videos/search",
+                headers=headers,
+                params={"query": query, "orientation": "portrait", "per_page": 15, "size": "medium"},
+                timeout=15,
+            )
+            if r.status_code == 200:
+                videos = r.json().get("videos", [])
+                if videos:
+                    video = random.choice(videos)
+                    # Pick the highest-quality portrait file
+                    files = sorted(
+                        video.get("video_files", []),
+                        key=lambda f: f.get("height", 0),
+                        reverse=True,
+                    )
+                    for vf in files:
+                        if vf.get("file_type") == "video/mp4":
+                            vid_data = requests.get(vf["link"], timeout=60, stream=True)
+                            if vid_data.status_code == 200:
+                                path = f"{VIDEO_DIR}/bg_video_{datetime.now().timestamp()}.mp4"
+                                with open(path, "wb") as f:
+                                    for chunk in vid_data.iter_content(chunk_size=65536):
+                                        f.write(chunk)
+                                print(f"✅ Downloaded Pexels video: {query}")
+                                return path, True
+        except Exception as e:
+            print(f"⚠️ Pexels video failed: {e}")
+
+        # 2. Pexels PHOTO fallback
         try:
             headers = {"Authorization": PEXELS_API_KEY}
             r = requests.get(
@@ -193,47 +230,17 @@ def get_peaceful_islamic_image(theme="mosque"):
                 photos = r.json().get("photos", [])
                 if photos:
                     photo = random.choice(photos)
-                    img_url = photo["src"]["large2x"]
-                    img_data = requests.get(img_url, timeout=30).content
+                    img_data = requests.get(photo["src"]["large2x"], timeout=30).content
                     path = f"{IMAGE_DIR}/bg_{datetime.now().timestamp()}.jpg"
                     with open(path, "wb") as f:
                         f.write(img_data)
-                    print(f"✅ Downloaded Pexels background: {query}")
-                    return path
+                    print(f"✅ Downloaded Pexels photo: {query}")
+                    return path, False
         except Exception as e:
-            print(f"⚠️ Pexels failed: {e}")
+            print(f"⚠️ Pexels photo failed: {e}")
 
-    # 2. Try Unsplash
-    unsplash_key = os.getenv("UNSPLASH_ACCESS_KEY", "")
-    if unsplash_key:
-        search_terms = {
-            "mosque": "mosque architecture interior",
-            "calligraphy": "islamic calligraphy art",
-            "nature": "peaceful nature sunrise",
-            "islamic-art": "islamic geometric architecture",
-            "sunset": "golden sunset peaceful",
-        }
-        query = search_terms.get(theme, "mosque architecture")
-        try:
-            r = requests.get(
-                "https://api.unsplash.com/photos/random",
-                headers={"Authorization": f"Client-ID {unsplash_key}"},
-                params={"query": query, "orientation": "portrait"},
-                timeout=15,
-            )
-            if r.status_code == 200:
-                img_url = r.json()["urls"]["full"]
-                img_data = requests.get(img_url, timeout=30).content
-                path = f"{IMAGE_DIR}/bg_{datetime.now().timestamp()}.jpg"
-                with open(path, "wb") as f:
-                    f.write(img_data)
-                print(f"✅ Downloaded Unsplash background")
-                return path
-        except Exception as e:
-            print(f"⚠️ Unsplash failed: {e}")
-
-    print("⚠️ No image API key set — using generated background")
-    return create_fallback_image()
+    print("⚠️ PEXELS_API_KEY not set — using generated background")
+    return create_fallback_image(), False
 
 
 def create_fallback_image():
@@ -321,88 +328,75 @@ def _wrap_text(draw, text, font, max_width):
     return lines
 
 
-def create_text_overlay(hook_text, hadith_verse, image_path):
+def create_text_overlay(hook_text, hadith_verse, background_path):
     """
-    Professional TikTok / Instagram Reels style overlay.
-    Layout:
-      - Full background image, resized to 1080x1920
-      - Subtle dark gradient (stronger at bottom)
-      - Center: gold decorative lines + large white hook text + verse ref
-      - Bottom: CTA "Read description for the full teaching"
+    Creates a transparent RGBA overlay PNG (1080x1920).
+    ffmpeg composites this on top of the video/image background.
     """
     try:
         from PIL import Image, ImageDraw
 
         W, H = 1080, 1920
-        img = Image.open(image_path).convert("RGBA")
-        img = img.resize((W, H), Image.LANCZOS)
+        canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(canvas)
 
-        # Gradient overlay — transparent top, darkening toward bottom
-        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        od = ImageDraw.Draw(overlay)
+        # Gradient: fully transparent at top, darkening toward bottom
         for y in range(H):
-            alpha = int(min(200, (y / H) ** 1.4 * 230))
+            alpha = int(min(210, (y / H) ** 1.5 * 240))
             od.line([(0, y), (W, y)], fill=(0, 0, 0, alpha))
-        # Slight center darkening for text readability
-        od.rectangle([0, H // 3, W, H * 2 // 3], fill=(0, 0, 0, 60))
-        img = Image.alpha_composite(img, overlay)
+        # Center band darker so text pops against bright footage
+        od.rectangle([0, H // 3, W, H * 2 // 3], fill=(0, 0, 0, 70))
 
-        draw = ImageDraw.Draw(img)
+        draw = ImageDraw.Draw(canvas)
         fonts = _load_fonts()
 
         GOLD  = (212, 175, 55)
         WHITE = (255, 255, 255)
         LGOLD = (255, 220, 100)
+        CX    = W // 2
 
-        CENTER_X = W // 2
-        LINE_W   = 700   # max text width
+        # ── Hook text ────────────────────────────────────────────────────
+        lines   = _wrap_text(draw, hook_text, fonts["title"], 880)
+        line_h  = 90
+        block_h = len(lines) * line_h
+        top     = H // 2 - block_h // 2 - 30
 
-        # ── Hook text (centered, large, bold) ─────────────────────────────
-        lines     = _wrap_text(draw, hook_text, fonts["title"], LINE_W)
-        line_h    = 88
-        block_h   = len(lines) * line_h
-        text_top  = H // 2 - block_h // 2 - 20
-
-        # Gold rule above
-        rule_y = text_top - 55
-        draw.line([(CENTER_X - 260, rule_y), (CENTER_X + 260, rule_y)], fill=GOLD, width=2)
-        draw.text((CENTER_X, rule_y - 22), "✦", font=fonts["cta"], fill=GOLD, anchor="mm")
+        ry = top - 60
+        draw.line([(CX - 280, ry), (CX + 280, ry)], fill=GOLD, width=2)
+        draw.text((CX, ry - 24), "❆", font=fonts["cta"], fill=GOLD, anchor="mm")
 
         for i, line in enumerate(lines):
-            y = text_top + i * line_h
-            # Shadow
-            draw.text((CENTER_X + 2, y + 2), line, font=fonts["title"],
-                      fill=(0, 0, 0, 160), anchor="mt")
-            # Text
-            draw.text((CENTER_X, y), line, font=fonts["title"],
-                      fill=WHITE, anchor="mt")
+            y = top + i * line_h
+            draw.text((CX + 2, y + 2), line, font=fonts["title"],
+                      fill=(0, 0, 0, 170), anchor="mt")
+            draw.text((CX, y), line, font=fonts["title"], fill=WHITE, anchor="mt")
 
-        # Gold rule below
-        rule_y2 = text_top + block_h + 30
-        draw.line([(CENTER_X - 260, rule_y2), (CENTER_X + 260, rule_y2)], fill=GOLD, width=2)
-        draw.text((CENTER_X, rule_y2 + 22), "✦", font=fonts["cta"], fill=GOLD, anchor="mm")
+        ry2 = top + block_h + 35
+        draw.line([(CX - 280, ry2), (CX + 280, ry2)], fill=GOLD, width=2)
+        draw.text((CX, ry2 + 24), "❆", font=fonts["cta"], fill=GOLD, anchor="mm")
 
-        # ── Hadith / verse reference ───────────────────────────────────────
-        draw.text((CENTER_X, rule_y2 + 75), hadith_verse,
-                  font=fonts["verse"], fill=LGOLD, anchor="mm")
+        # ── Verse reference ───────────────────────────────────────────────
+        if hadith_verse:
+            draw.text((CX, ry2 + 80), hadith_verse,
+                      font=fonts["verse"], fill=LGOLD, anchor="mm")
 
-        # ── Bottom CTA ────────────────────────────────────────────────────
-        cta_y = H - 200
-        draw.line([(80, cta_y - 35), (W - 80, cta_y - 35)],
-                  fill=(255, 255, 255, 60), width=1)
-        draw.text((CENTER_X, cta_y), "Read description for the full teaching",
+        # ── Bottom CTA ───────────────────────────────────────────────────
+        cta_y = H - 210
+        draw.line([(80, cta_y - 40), (W - 80, cta_y - 40)],
+                  fill=(255, 255, 255, 50), width=1)
+        draw.text((CX, cta_y), "Read description for the full teaching",
                   font=fonts["cta"], fill=WHITE, anchor="mm")
-        draw.text((CENTER_X, cta_y + 55), "↓  Follow for daily reminders  ↓",
+        draw.text((CX, cta_y + 58), "↓  Follow for daily reminders  ↓",
                   font=fonts["cta"], fill=LGOLD, anchor="mm")
 
-        out = f"{IMAGE_DIR}/text_overlay_{datetime.now().timestamp()}.png"
-        img.convert("RGB").save(out, quality=95)
-        print(f"✅ Created professional text overlay")
+        out = f"{IMAGE_DIR}/overlay_{datetime.now().timestamp()}.png"
+        canvas.save(out)   # keep RGBA for ffmpeg overlay filter
+        print(f"✅ Created text overlay")
         return out
 
     except Exception as e:
         print(f"⚠️ Error creating text overlay: {e}")
-        return image_path
+        return None
 
 
 # ============================================================================
@@ -481,56 +475,69 @@ def create_ambient_music():
 # STEP 5: CREATE VIDEO WITH FFMPEG
 # ============================================================================
 
-def create_video(background_image, music_path, output_path):
+def create_video(background_path, overlay_path, music_path, output_path, is_video_bg=False):
     """
-    Creates 60-second YouTube Shorts / Reels video.
-    - Slow Ken Burns zoom (1.0 → 1.08 over 60s) makes static images feel alive
-    - Fade in/out on both video and audio
-    - 1080x1920, high quality
+    Composites background (video or image) + transparent text overlay + music.
+
+    Video background: loops the clip, overlays text PNG, adds music.
+    Image background: Ken Burns slow zoom, overlays text PNG, adds music.
     """
     try:
-        # Ken Burns: slow zoom from center, 60 s × 25 fps = 1500 frames
-        # zoompan: z = zoom level, d = duration in frames, x/y keep center
-        vf = (
-            "scale=8000:-1,"                          # upscale so zoompan has room
-            "zoompan="
-            "z='min(zoom+0.0003,1.08)':"
-            "d=1500:"
-            "x='iw/2-(iw/zoom/2)':"
-            "y='ih/2-(ih/zoom/2)':"
-            "s=1080x1920,"
-            "setsar=1,"
-            "fade=t=in:st=0:d=1,"                     # 1-second fade in
-            "fade=t=out:st=58:d=2"                    # 2-second fade out
-        )
-        cmd = [
-            "ffmpeg",
-            "-loop", "1",
-            "-framerate", "25",
-            "-i", background_image,
-            "-i", music_path,
-            "-vf", vf,
-            "-af", "afade=t=in:st=0:d=2,afade=t=out:st=57:d=3",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "20",
-            "-c:a", "aac",
-            "-b:a", "192k",
+        common_out = [
+            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            "-c:a", "aac", "-b:a", "192k",
             "-t", "60",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             "-y", output_path,
         ]
+        af = "afade=t=in:st=0:d=2,afade=t=out:st=57:d=3"
+
+        if is_video_bg:
+            # Scale/crop video to 1080x1920, loop it, overlay text, add music
+            fc = (
+                "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+                "crop=1080:1920,setsar=1,"
+                "fade=t=in:st=0:d=1,fade=t=out:st=58:d=2[bg];"
+                "[bg][1:v]overlay=0:0[v]"
+            )
+            cmd = [
+                "ffmpeg",
+                "-stream_loop", "-1", "-i", background_path,   # loop video bg
+                "-loop", "1",          "-i", overlay_path,      # text overlay
+                "-i", music_path,
+                "-filter_complex", fc,
+                "-map", "[v]", "-map", "2:a",
+                "-af", af,
+            ] + common_out
+        else:
+            # Ken Burns on static image + overlay text
+            fc = (
+                "[0:v]scale=8000:-1,"
+                "zoompan=z='min(zoom+0.0003,1.08)':d=1500"
+                ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920,"
+                "setsar=1,"
+                "fade=t=in:st=0:d=1,fade=t=out:st=58:d=2[bg];"
+                "[bg][1:v]overlay=0:0[v]"
+            )
+            cmd = [
+                "ffmpeg",
+                "-loop", "1", "-framerate", "25", "-i", background_path,
+                "-loop", "1",                      "-i", overlay_path,
+                "-i", music_path,
+                "-filter_complex", fc,
+                "-map", "[v]", "-map", "2:a",
+                "-af", af,
+            ] + common_out
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
         if result.returncode == 0:
             print(f"✅ Video created: {output_path}")
             return output_path
         else:
-            print(f"❌ FFmpeg error: {result.stderr[-500:]}")
+            print(f"❌ FFmpeg error: {result.stderr[-600:]}")
             return None
-    
+
     except Exception as e:
         print(f"❌ Error creating video: {e}")
         return None
@@ -737,20 +744,20 @@ def main():
         print("❌ Failed to generate content. Exiting.")
         return False
     
-    # STEP 2: Get background image
-    print(f"\n🖼️  Step 2: Fetching Islamic background image...")
-    background_image = get_peaceful_islamic_image(content_data.get('image_theme', 'mosque'))
-    
-    if not background_image:
+    # STEP 2: Get background (video preferred, image fallback)
+    print(f"\n🎥 Step 2: Fetching Islamic background...")
+    background_path, is_video_bg = get_peaceful_islamic_image(content_data.get('image_theme', 'mosque'))
+
+    if not background_path:
         print("❌ Failed to get background. Exiting.")
         return False
-    
-    # STEP 3: Create text overlay
+
+    # STEP 3: Create transparent text overlay
     print("\n📝 Step 3: Creating text overlay...")
     text_image = create_text_overlay(
         content_data['hook_text'],
         content_data.get('hadith_verse', ''),
-        background_image,
+        background_path,
     )
     
     # STEP 4: Get music
@@ -766,7 +773,7 @@ def main():
     video_timestamp = datetime.now().timestamp()
     video_path = f"{VIDEO_DIR}/islamic_teaching_{video_timestamp}.mp4"
     
-    video = create_video(text_image, music_path, video_path)
+    video = create_video(background_path, text_image, music_path, video_path, is_video_bg)
     
     if not video:
         print("❌ Failed to create video. Exiting.")
