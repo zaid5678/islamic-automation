@@ -97,14 +97,22 @@ def generate_islamic_content():
 
         response_text = response.json()["choices"][0]["message"]["content"].strip()
 
+        # Strip markdown fences
         if response_text.startswith("```json"):
             response_text = response_text[7:]
         if response_text.startswith("```"):
             response_text = response_text[3:]
         if response_text.endswith("```"):
             response_text = response_text[:-3]
+        response_text = response_text.strip()
 
-        content_data = json.loads(response_text.strip())
+        # Extract the JSON object robustly (handles extra text before/after)
+        import re
+        match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if match:
+            response_text = match.group(0)
+
+        content_data = json.loads(response_text)
         print("✅ Generated content with Groq (Llama 3):")
         print(f"   Topic: {content_data['topic']}")
         print(f"   Hook: {content_data['hook_text']}")
