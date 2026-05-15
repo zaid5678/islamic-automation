@@ -115,7 +115,6 @@ def generate_islamic_content():
             "messages": [{"role": "user", "content": GEMINI_PROMPT}],
             "max_tokens": 4096,
             "temperature": 0.9,
-            "response_format": {"type": "json_object"},
         }
         response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
@@ -721,7 +720,27 @@ def upload_to_instagram(video_public_url, caption):
 
         creation_id = response.json().get("id")
 
-        # Step 2 — publish
+        # Step 2 — wait for Instagram to finish processing the video
+        import time
+        status_url = f"https://graph.facebook.com/v18.0/{creation_id}"
+        for attempt in range(15):
+            time.sleep(10)
+            st = requests.get(status_url, params={
+                "fields": "status_code",
+                "access_token": INSTAGRAM_ACCESS_TOKEN,
+            }, timeout=15).json()
+            status = st.get("status_code", "")
+            print(f"   Instagram processing status: {status} (attempt {attempt + 1})")
+            if status == "FINISHED":
+                break
+            if status == "ERROR":
+                print(f"⚠️ Instagram processing error")
+                return None
+        else:
+            print("⚠️ Instagram processing timed out")
+            return None
+
+        # Step 3 — publish
         publish_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
         publish_payload = {"creation_id": creation_id, "access_token": INSTAGRAM_ACCESS_TOKEN}
         pub_response = requests.post(publish_url, data=publish_payload, timeout=30)
