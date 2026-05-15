@@ -1,29 +1,24 @@
 name: Islamic Content Automation
 
-# ─── STEP 6.3 equivalent: Schedule Trigger ───────────────────────────────────
-# Runs daily at 20:00 UTC = 8 PM London GMT (9 PM during BST/summer).
-# workflow_dispatch lets you click "Run workflow" in the GitHub Actions UI
-# to trigger it manually at any time (equivalent to Make.com's "Run once" button).
 on:
   schedule:
-    - cron: "0 20 * * *"
+    - cron: "0 20 * * *"   # 8 PM London GMT (9 PM BST in summer)
   workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # silence Node.js 20 deprecation warning
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      # ─── STEP 6.4 equivalent: Run the automation ───────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build Docker image
         run: docker build -t islamic-automation .
 
-      # The container runs the full script and exits when done.
-      # No sleep step needed — GitHub Actions waits for the container to finish
-      # before moving to the next step (equivalent to Make.com's Sleep module).
       - name: Run automation
         id: run_automation
         env:
@@ -53,42 +48,41 @@ jobs:
             -e YOUTUBE_REFRESH_TOKEN \
             islamic-automation
 
-      # ─── STEP 6.6 equivalent: Email Notification on success ────────────────
-      # Uses Gmail SMTP. Requires two GitHub secrets:
-      #   GMAIL_USERNAME  — your Gmail address (e.g. zfkhan321@gmail.com)
-      #   GMAIL_APP_PASSWORD — a Gmail App Password (not your normal password).
-      #     Generate one at: Google Account → Security → 2-Step Verification → App passwords
+      # Email steps only run if GMAIL_APP_PASSWORD secret is set.
+      # To enable: add GMAIL_APP_PASSWORD to GitHub Secrets (Google Account → Security → App passwords).
+      # The to/from address is hardcoded so it works even if GMAIL_USERNAME secret isn't set.
       - name: Send success email
         if: success()
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
           secure: true
-          username: ${{ secrets.GMAIL_USERNAME }}
+          username: zaidkhanuk2019@gmail.com
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          to: ${{ secrets.GMAIL_USERNAME }}
-          from: Islamic Automation <${{ secrets.GMAIL_USERNAME }}>
+          to: zaidkhanuk2019@gmail.com
+          from: Islamic Automation <zaidkhanuk2019@gmail.com>
           subject: "✅ Islamic Content Video Generated"
           body: |
-            Your daily Islamic content video has been generated and uploaded!
+            Your daily Islamic content video has been generated and uploaded to @ServantUnseen!
 
-            Check YouTube: https://www.youtube.com/@${{ secrets.YOUTUBE_CHANNEL_ID }}
+            Check YouTube: https://www.youtube.com/@ServantUnseen
 
             Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      # ─── Bonus: Email on failure so you know if something broke ────────────
       - name: Send failure email
         if: failure()
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
           secure: true
-          username: ${{ secrets.GMAIL_USERNAME }}
+          username: zaidkhanuk2019@gmail.com
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
-          to: ${{ secrets.GMAIL_USERNAME }}
-          from: Islamic Automation <${{ secrets.GMAIL_USERNAME }}>
+          to: zaidkhanuk2019@gmail.com
+          from: Islamic Automation <zaidkhanuk2019@gmail.com>
           subject: "❌ Islamic Automation Failed"
           body: |
             Something went wrong with today's automation run.
