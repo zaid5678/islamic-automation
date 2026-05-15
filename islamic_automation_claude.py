@@ -8,7 +8,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import requests
-import anthropic
+import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
@@ -31,8 +31,8 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
 
-# Claude API
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
+# Gemini API (free at aistudio.google.com)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Google Cloud Storage (for temporary video hosting so Instagram can fetch it)
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "")
@@ -48,72 +48,56 @@ for directory in [MUSIC_DIR, IMAGE_DIR, VIDEO_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 # ============================================================================
-# STEP 1: GENERATE CONTENT WITH CLAUDE (FREE LLM)
+# STEP 1: GENERATE CONTENT WITH GEMINI (FREE)
 # ============================================================================
 
+GEMINI_PROMPT = """Generate ONE Islamic teaching for a YouTube Short/Instagram Reel.
+
+Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
+{
+    "topic": "Topic name",
+    "hadith_verse": "Quran X:X or Hadith reference",
+    "hook_text": "One sentence that appears on screen - makes user want to read description",
+    "image_theme": "mosque OR calligraphy OR nature OR islamic-art OR sunset",
+    "full_teaching": "2-3 sentences explaining the Islamic concept deeply",
+    "daily_lesson": "One actionable tip the user can do today",
+    "youtube_description": "Full YouTube description with emoji, call to action, hashtags",
+    "instagram_caption": "Instagram caption with emoji and hashtags"
+}
+
+Important:
+- Make hook_text SHORT (one sentence, max 10 words)
+- Make hook_text compelling (makes them want to read more)
+- Make descriptions detailed and meaningful
+- Focus on universal Islamic teachings (patience, gratitude, kindness, etc)
+- Include relevant Quranic verses or Hadith
+- Make it authentic and respectful
+- Include monetization elements (affiliate suggestions in description)"""
+
+
 def generate_islamic_content():
-    """
-    Uses Claude to generate daily Islamic content
-    Completely free - no cost
-    """
     try:
-        client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-        
-        prompt = """Generate ONE Islamic teaching for a YouTube Short/Instagram Reel. 
-        
-        Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
-        {
-            "topic": "Topic name",
-            "hadith_verse": "Quran X:X or Hadith reference",
-            "hook_text": "One sentence that appears on screen - makes user want to read description",
-            "image_theme": "mosque OR calligraphy OR nature OR islamic-art OR sunset",
-            "full_teaching": "2-3 sentences explaining the Islamic concept deeply",
-            "daily_lesson": "One actionable tip the user can do today",
-            "youtube_description": "Full YouTube description with emoji, call to action, hashtags",
-            "instagram_caption": "Instagram caption with emoji and hashtags"
-        }
-        
-        Important:
-        - Make hook_text SHORT (one sentence, max 10 words)
-        - Make hook_text compelling (makes them want to read more)
-        - Make descriptions detailed and meaningful
-        - Focus on universal Islamic teachings (patience, gratitude, kindness, etc)
-        - Include relevant Quranic verses or Hadith
-        - Make it authentic and respectful
-        - Include monetization elements (affiliate suggestions in description)
-        """
-        
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # Extract JSON from response
-        response_text = message.content[0].text.strip()
-        
-        # Remove markdown code blocks if present
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(GEMINI_PROMPT)
+        response_text = response.text.strip()
+
+        # Strip markdown code fences if present
         if response_text.startswith("```json"):
             response_text = response_text[7:]
         if response_text.startswith("```"):
             response_text = response_text[3:]
         if response_text.endswith("```"):
             response_text = response_text[:-3]
-        
-        # Parse JSON
+
         content_data = json.loads(response_text.strip())
-        
-        print("✅ Generated content with Claude:")
+        print("✅ Generated content with Gemini:")
         print(f"   Topic: {content_data['topic']}")
         print(f"   Hook: {content_data['hook_text']}")
-        
         return content_data
-    
+
     except Exception as e:
-        print(f"❌ Error generating content with Claude: {e}")
-        # Fallback content if Claude fails
+        print(f"❌ Error generating content with Gemini: {e}")
         return get_fallback_content()
 
 
