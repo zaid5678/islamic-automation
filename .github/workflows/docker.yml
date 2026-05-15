@@ -26,6 +26,7 @@ jobs:
           YOUTUBE_CHANNEL_ID: ${{ secrets.YOUTUBE_CHANNEL_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          NASHEED_URL: ${{ secrets.NASHEED_URL }}
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
@@ -40,6 +41,7 @@ jobs:
             -e YOUTUBE_CHANNEL_ID \
             -e GROQ_API_KEY \
             -e PEXELS_API_KEY \
+            -e NASHEED_URL \
             -e INSTAGRAM_BUSINESS_ACCOUNT_ID \
             -e INSTAGRAM_ACCESS_TOKEN \
             -e GOOGLE_CREDENTIALS_JSON \

@@ -409,38 +409,35 @@ def create_text_overlay(hook_text, hadith_verse, background_path):
 # STEP 4: GET NASHEED / ISLAMIC MUSIC
 # ============================================================================
 
-# Primary nasheed — downloaded once and reused each run
-NASHEED_YOUTUBE_URL = "https://www.youtube.com/watch?v=0RR1GLQ65Vs"
+# Nasheed URL — set NASHEED_URL secret to any publicly hosted MP3
+# (upload to GCS bucket → make public → paste the URL as the secret)
+NASHEED_URL = os.getenv("NASHEED_URL", "")
 NASHEED_CACHED_PATH = f"{MUSIC_DIR}/nasheed_primary.mp3"
 
 
 def get_islamic_music():
-    """Download nasheed from YouTube via yt-dlp, cache for reuse."""
-    # Use cached file if already downloaded
+    """Download nasheed from NASHEED_URL secret (hosted MP3), cache for reuse."""
+    # Use cached file if already downloaded this run
     if os.path.exists(NASHEED_CACHED_PATH) and os.path.getsize(NASHEED_CACHED_PATH) > 100_000:
         print(f"✅ Using cached nasheed")
         return NASHEED_CACHED_PATH
 
-    try:
-        result = subprocess.run([
-            "yt-dlp",
-            "-x",
-            "--audio-format", "mp3",
-            "--audio-quality", "0",
-            "--no-playlist",
-            "-o", NASHEED_CACHED_PATH.replace(".mp3", ".%(ext)s"),
-            NASHEED_YOUTUBE_URL,
-        ], capture_output=True, text=True, timeout=120)
+    if NASHEED_URL:
+        try:
+            r = requests.get(NASHEED_URL, timeout=60, stream=True)
+            if r.status_code == 200:
+                with open(NASHEED_CACHED_PATH, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=65536):
+                        f.write(chunk)
+                print(f"✅ Downloaded nasheed from hosted URL")
+                return NASHEED_CACHED_PATH
+            else:
+                print(f"⚠️ Nasheed URL returned {r.status_code}")
+        except Exception as e:
+            print(f"⚠️ Nasheed download error: {e}")
+    else:
+        print("⚠️ NASHEED_URL not set — using ambient fallback")
 
-        if result.returncode == 0 and os.path.exists(NASHEED_CACHED_PATH):
-            print(f"✅ Downloaded nasheed from YouTube")
-            return NASHEED_CACHED_PATH
-        else:
-            print(f"⚠️ yt-dlp failed: {result.stderr[-300:]}")
-    except Exception as e:
-        print(f"⚠️ Nasheed download error: {e}")
-
-    print("⚠️ Falling back to generated ambient music")
     return create_ambient_music()
 
 
