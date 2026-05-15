@@ -8,7 +8,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import requests
-import google.generativeai as genai
+import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from google.oauth2.service_account import Credentials as SACredentials
 from google.auth.transport.requests import Request
@@ -31,8 +31,11 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
 
-# Gemini API (free at aistudio.google.com)
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GCP_PROJECT = "seraphic-ripple-496317-v1"
+VERTEX_AI_URL = (
+    f"https://us-central1-aiplatform.googleapis.com/v1/projects/{GCP_PROJECT}"
+    f"/locations/us-central1/publishers/google/models/gemini-1.5-flash:generateContent"
+)
 
 # Google Cloud Storage (for temporary video hosting so Instagram can fetch it)
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "")
@@ -76,13 +79,29 @@ Important:
 
 
 def generate_islamic_content():
+    """Calls Gemini via Vertex AI using the service account — no separate API key needed."""
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(GEMINI_PROMPT)
-        response_text = response.text.strip()
+        sa_creds = SACredentials.from_service_account_file(
+            GOOGLE_CREDENTIALS_PATH,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        sa_creds.refresh(google.auth.transport.requests.Request())
 
-        # Strip markdown code fences if present
+        headers = {
+            "Authorization": f"Bearer {sa_creds.token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": GEMINI_PROMPT}]}],
+            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.9},
+        }
+        response = requests.post(VERTEX_AI_URL, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+
+        response_text = (
+            response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        )
+
         if response_text.startswith("```json"):
             response_text = response_text[7:]
         if response_text.startswith("```"):
@@ -91,7 +110,7 @@ def generate_islamic_content():
             response_text = response_text[:-3]
 
         content_data = json.loads(response_text.strip())
-        print("✅ Generated content with Gemini:")
+        print("✅ Generated content with Gemini (Vertex AI):")
         print(f"   Topic: {content_data['topic']}")
         print(f"   Hook: {content_data['hook_text']}")
         return content_data
