@@ -66,8 +66,7 @@ JSON structure:
   "hadith_verse": "Short reference only e.g. Quran 2:153",
   "hook_text": "One punchy sentence max 8 words no quotes",
   "image_theme": "mosque OR nature OR islamic-art OR sunset",
-  "youtube_description": "Full description — see format below",
-  "instagram_caption": "First 3 paragraphs of youtube_description then hashtags"
+  "youtube_description": "Full description — see format below"
 }
 
 For youtube_description use this format with \\n for line breaks:
@@ -870,7 +869,7 @@ def main():
     # STEP 7: Upload to GCS → Instagram → clean up GCS
     print("\n📸 Step 7: Uploading to Instagram Reels via GCS...")
     gcs_url, gcs_blob = upload_video_to_gcs(video_path)
-    ig_caption = content_data.get('instagram_caption') or content_data.get('youtube_description', '')
+    ig_caption = content_data.get('youtube_description', '')
     instagram_id = upload_to_instagram(gcs_url, ig_caption)
     delete_from_gcs(gcs_blob)
 
