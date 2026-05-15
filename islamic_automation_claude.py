@@ -6,7 +6,7 @@ One video per day, 100% free
 
 import os
 import json
-import datetime
+from datetime import datetime, timedelta
 import requests
 import anthropic
 from google.oauth2.credentials import Credentials
@@ -587,7 +587,7 @@ def upload_video_to_gcs(video_path):
         )
         signed_url = blob.generate_signed_url(
             version="v4",
-            expiration=datetime.timedelta(hours=1),
+            expiration=timedelta(hours=1),
             method="GET",
             credentials=sa_creds,
         )
@@ -701,4 +701,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(0 if main() else 1)
