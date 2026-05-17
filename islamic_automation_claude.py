@@ -26,9 +26,12 @@ from pathlib import Path
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "YOUR_YOUTUBE_API_KEY")
 YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 
-# Instagram API (optional)
+# Instagram & Facebook
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
-INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+# Use a Page Access Token for both Instagram and Facebook (more reliable than user token)
+FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN)
+FACEBOOK_PAGE_ID = "61589795518432"   # ServantUnseen Facebook page
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -666,72 +669,115 @@ def upload_to_youtube(video_path, title, description, tags):
 # STEP 7: UPLOAD TO INSTAGRAM (OPTIONAL)
 # ============================================================================
 
+def _active_instagram_token():
+    """Returns whichever Instagram token is set — page token preferred."""
+    return FACEBOOK_PAGE_ACCESS_TOKEN or INSTAGRAM_ACCESS_TOKEN
+
+
 def upload_to_instagram(video_public_url, caption):
     """
-    Uploads to Instagram Reels via the Graph API.
-    video_public_url must be a publicly accessible HTTPS URL — Instagram
-    cannot reach local file paths.  Host the video (e.g. S3, GCS, CDN)
-    and pass the URL here, or set INSTAGRAM_VIDEO_HOST_URL to skip local upload.
+    Uploads to Instagram Reels via the Graph API using a Page Access Token.
+    The token must have: instagram_content_publish, pages_read_engagement.
     """
-    if not INSTAGRAM_ACCESS_TOKEN or not INSTAGRAM_BUSINESS_ACCOUNT_ID:
-        print("⚠️ Instagram upload skipped (not configured)")
+    token = _active_instagram_token()
+    if not token or not INSTAGRAM_BUSINESS_ACCOUNT_ID:
+        print("⚠️ Instagram upload skipped — FACEBOOK_PAGE_ACCESS_TOKEN or INSTAGRAM_BUSINESS_ACCOUNT_ID not set")
         return None
 
     if not video_public_url or not video_public_url.startswith("https://"):
-        print("⚠️ Instagram upload skipped (no public HTTPS video URL available)")
+        print("⚠️ Instagram upload skipped — no public HTTPS video URL")
         return None
 
+    import time
     try:
-        # Step 1 — create media container
-        container_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
-        payload = {
-            "video_url": video_public_url,
-            "media_type": "REELS",
-            "caption": caption,
-            "access_token": INSTAGRAM_ACCESS_TOKEN,
-        }
-        response = requests.post(container_url, data=payload, timeout=30)
-
-        if response.status_code != 200:
-            print(f"⚠️ Instagram container creation failed: {response.text}")
+        # Step 1 — create Reels container
+        r = requests.post(
+            f"https://graph.facebook.com/v21.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
+            data={
+                "video_url": video_public_url,
+                "media_type": "REELS",
+                "caption": caption,
+                "access_token": token,
+            },
+            timeout=30,
+        )
+        data = r.json()
+        if r.status_code != 200 or "id" not in data:
+            print(f"⚠️ Instagram container failed: {data}")
             return None
+        creation_id = data["id"]
 
-        creation_id = response.json().get("id")
-
-        # Step 2 — wait for Instagram to finish processing the video
-        import time
-        status_url = f"https://graph.facebook.com/v18.0/{creation_id}"
-        for attempt in range(15):
+        # Step 2 — poll until video is processed (up to 3 minutes)
+        for attempt in range(18):
             time.sleep(10)
-            st = requests.get(status_url, params={
-                "fields": "status_code",
-                "access_token": INSTAGRAM_ACCESS_TOKEN,
-            }, timeout=15).json()
+            st = requests.get(
+                f"https://graph.facebook.com/v21.0/{creation_id}",
+                params={"fields": "status_code,status", "access_token": token},
+                timeout=15,
+            ).json()
             status = st.get("status_code", "")
-            print(f"   Instagram processing status: {status} (attempt {attempt + 1})")
+            print(f"   Instagram status: {status} (attempt {attempt + 1})")
             if status == "FINISHED":
                 break
             if status == "ERROR":
-                print(f"⚠️ Instagram processing error")
+                print(f"⚠️ Instagram processing error: {st.get('status')}")
                 return None
         else:
             print("⚠️ Instagram processing timed out")
             return None
 
         # Step 3 — publish
-        publish_url = f"https://graph.facebook.com/v18.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
-        publish_payload = {"creation_id": creation_id, "access_token": INSTAGRAM_ACCESS_TOKEN}
-        pub_response = requests.post(publish_url, data=publish_payload, timeout=30)
-
-        if pub_response.status_code == 200:
+        pub = requests.post(
+            f"https://graph.facebook.com/v21.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish",
+            data={"creation_id": creation_id, "access_token": token},
+            timeout=30,
+        )
+        if pub.status_code == 200 and "id" in pub.json():
             print("✅ Posted to Instagram Reels!")
-            return pub_response.json().get("id")
+            return pub.json().get("id")
         else:
-            print(f"⚠️ Instagram publish failed: {pub_response.text}")
+            print(f"⚠️ Instagram publish failed: {pub.json()}")
             return None
 
     except Exception as e:
-        print(f"⚠️ Instagram upload skipped: {e}")
+        print(f"⚠️ Instagram upload error: {e}")
+        return None
+
+
+def upload_to_facebook_page(video_public_url, title, description):
+    """
+    Posts the video to the ServantUnseen Facebook Page.
+    Token must have: pages_manage_posts, pages_read_engagement.
+    """
+    token = FACEBOOK_PAGE_ACCESS_TOKEN
+    if not token:
+        print("⚠️ Facebook Page upload skipped — FACEBOOK_PAGE_ACCESS_TOKEN not set")
+        return None
+
+    if not video_public_url or not video_public_url.startswith("https://"):
+        print("⚠️ Facebook upload skipped — no public HTTPS video URL")
+        return None
+
+    try:
+        r = requests.post(
+            f"https://graph.facebook.com/v21.0/{FACEBOOK_PAGE_ID}/videos",
+            data={
+                "file_url": video_public_url,
+                "title": title,
+                "description": description,
+                "access_token": token,
+            },
+            timeout=60,
+        )
+        data = r.json()
+        if r.status_code == 200 and "id" in data:
+            print(f"✅ Posted to Facebook Page! Video ID: {data['id']}")
+            return data["id"]
+        else:
+            print(f"⚠️ Facebook Page upload failed: {data}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Facebook Page upload error: {e}")
         return None
 
 
@@ -866,11 +912,15 @@ def main():
         youtube_tags
     )
     
-    # STEP 7: Upload to GCS → Instagram → clean up GCS
-    print("\n📸 Step 7: Uploading to Instagram Reels via GCS...")
+    # STEP 7: Upload to GCS → Instagram + Facebook → clean up GCS
+    print("\n📸 Step 7: Uploading to Instagram & Facebook via GCS...")
     gcs_url, gcs_blob = upload_video_to_gcs(video_path)
-    ig_caption = content_data.get('youtube_description', '')
-    instagram_id = upload_to_instagram(gcs_url, ig_caption)
+    description = content_data.get('youtube_description', '')
+    title = f"{content_data['topic']} - Islamic Teaching"
+
+    instagram_id = upload_to_instagram(gcs_url, description)
+    facebook_id  = upload_to_facebook_page(gcs_url, title, description)
+
     delete_from_gcs(gcs_blob)
 
     # Cleanup local files
@@ -888,6 +938,8 @@ def main():
     print(f"   YouTube: https://www.youtube.com/shorts/{youtube_id}")
     if instagram_id:
         print(f"   Instagram: Posted")
+    if facebook_id:
+        print(f"   Facebook:  Posted")
     print("="*60 + "\n")
     
     return True
