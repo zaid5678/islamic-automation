@@ -31,7 +31,35 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 # Use a Page Access Token for both Instagram and Facebook (more reliable than user token)
 FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN)
-FACEBOOK_PAGE_ID = "61589795518432"   # ServantUnseen Facebook page
+_FACEBOOK_PAGE_ID_CACHE = None   # resolved at runtime from the page token
+
+def _get_facebook_page_id():
+    """Fetch the real Graph API page ID from the page access token."""
+    global _FACEBOOK_PAGE_ID_CACHE
+    if _FACEBOOK_PAGE_ID_CACHE:
+        return _FACEBOOK_PAGE_ID_CACHE
+    token = FACEBOOK_PAGE_ACCESS_TOKEN
+    if not token:
+        return None
+    try:
+        r = requests.get(
+            "https://graph.facebook.com/v21.0/me",
+            params={"access_token": token, "fields": "id,name"},
+            timeout=10,
+        )
+        data = r.json()
+        page_id = data.get("id")
+        page_name = data.get("name", "")
+        if page_id:
+            print(f"✅ Facebook page resolved: {page_name} (ID: {page_id})")
+            _FACEBOOK_PAGE_ID_CACHE = page_id
+            return page_id
+        else:
+            print(f"⚠️ Could not resolve Facebook page ID: {data}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Facebook page ID lookup failed: {e}")
+        return None
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -690,13 +718,16 @@ def upload_to_instagram(video_public_url, caption):
 
     import time
     try:
+        # Instagram caption limit is 2,200 characters
+        ig_caption = caption[:2197] + "…" if len(caption) > 2200 else caption
+
         # Step 1 — create Reels container
         r = requests.post(
             f"https://graph.facebook.com/v21.0/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media",
             data={
                 "video_url": video_public_url,
                 "media_type": "REELS",
-                "caption": caption,
+                "caption": ig_caption,
                 "access_token": token,
             },
             timeout=30,
@@ -758,9 +789,14 @@ def upload_to_facebook_page(video_public_url, title, description):
         print("⚠️ Facebook upload skipped — no public HTTPS video URL")
         return None
 
+    page_id = _get_facebook_page_id()
+    if not page_id:
+        print("⚠️ Facebook upload skipped — could not resolve page ID")
+        return None
+
     try:
         r = requests.post(
-            f"https://graph.facebook.com/v21.0/{FACEBOOK_PAGE_ID}/videos",
+            f"https://graph.facebook.com/v21.0/{page_id}/videos",
             data={
                 "file_url": video_public_url,
                 "title": title,
