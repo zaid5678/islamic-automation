@@ -719,7 +719,9 @@ def upload_to_instagram(video_public_url, caption):
     import time
     try:
         # Instagram caption limit is 2,200 characters
-        ig_caption = caption[:2197] + "…" if len(caption) > 2200 else caption
+        suffix = "\n\nFollow for more Islamic reminders ☪️"
+        max_body = 2200 - len(suffix)
+        ig_caption = (caption[:max_body - 1] + "…" if len(caption) > max_body else caption) + suffix
 
         # Step 1 — create Reels container
         r = requests.post(
