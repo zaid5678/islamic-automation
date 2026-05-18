@@ -31,35 +31,63 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 # Use a Page Access Token for both Instagram and Facebook (more reliable than user token)
 FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN)
-_FACEBOOK_PAGE_ID_CACHE = None   # resolved at runtime from the page token
+_FACEBOOK_PAGE_CACHE = None   # (page_id, page_token) resolved at runtime
 
-def _get_facebook_page_id():
-    """Fetch the real Graph API page ID from the page access token."""
-    global _FACEBOOK_PAGE_ID_CACHE
-    if _FACEBOOK_PAGE_ID_CACHE:
-        return _FACEBOOK_PAGE_ID_CACHE
+SERVANT_UNSEEN_PAGE_NAME_HINT = "servantunseen"   # partial match, case-insensitive
+
+def _get_facebook_page():
+    """
+    Returns (page_id, page_access_token) for the ServantUnseen page.
+    Calls /me/accounts with the user token to list all managed pages,
+    then picks the one matching ServantUnseen.
+    """
+    global _FACEBOOK_PAGE_CACHE
+    if _FACEBOOK_PAGE_CACHE:
+        return _FACEBOOK_PAGE_CACHE
+
     token = FACEBOOK_PAGE_ACCESS_TOKEN
     if not token:
-        return None
+        return None, None
+
     try:
         r = requests.get(
-            "https://graph.facebook.com/v21.0/me",
-            params={"access_token": token, "fields": "id,name"},
+            "https://graph.facebook.com/v21.0/me/accounts",
+            params={"access_token": token, "fields": "id,name,access_token"},
             timeout=10,
         )
         data = r.json()
-        page_id = data.get("id")
-        page_name = data.get("name", "")
-        if page_id:
-            print(f"✅ Facebook page resolved: {page_name} (ID: {page_id})")
-            _FACEBOOK_PAGE_ID_CACHE = page_id
-            return page_id
-        else:
-            print(f"⚠️ Could not resolve Facebook page ID: {data}")
-            return None
+        pages = data.get("data", [])
+
+        if not pages:
+            print(f"⚠️ No pages found under this token: {data}")
+            return None, None
+
+        # Print all pages so we can debug
+        for p in pages:
+            print(f"   Found page: {p.get('name')} (ID: {p.get('id')})")
+
+        # Try to match ServantUnseen by name
+        match = next(
+            (p for p in pages if SERVANT_UNSEEN_PAGE_NAME_HINT in p.get("name", "").lower().replace(" ", "")),
+            None,
+        )
+        # Fall back to first page if only one exists
+        if not match and len(pages) == 1:
+            match = pages[0]
+
+        if match:
+            page_id = match["id"]
+            page_token = match.get("access_token", token)
+            print(f"✅ Using Facebook page: {match['name']} (ID: {page_id})")
+            _FACEBOOK_PAGE_CACHE = (page_id, page_token)
+            return page_id, page_token
+
+        print(f"⚠️ Could not find ServantUnseen in managed pages — found: {[p['name'] for p in pages]}")
+        return None, None
+
     except Exception as e:
-        print(f"⚠️ Facebook page ID lookup failed: {e}")
-        return None
+        print(f"⚠️ Facebook page lookup failed: {e}")
+        return None, None
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -791,7 +819,7 @@ def upload_to_facebook_page(video_public_url, title, description):
         print("⚠️ Facebook upload skipped — no public HTTPS video URL")
         return None
 
-    page_id = _get_facebook_page_id()
+    page_id, page_token = _get_facebook_page()
     if not page_id:
         print("⚠️ Facebook upload skipped — could not resolve page ID")
         return None
@@ -803,7 +831,7 @@ def upload_to_facebook_page(video_public_url, title, description):
                 "file_url": video_public_url,
                 "title": title,
                 "description": description,
-                "access_token": token,
+                "access_token": page_token,
             },
             timeout=60,
         )
