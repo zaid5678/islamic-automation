@@ -33,13 +33,15 @@ FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN)
 _FACEBOOK_PAGE_CACHE = None   # (page_id, page_token) resolved at runtime
 
-SERVANT_UNSEEN_PAGE_NAME_HINT = "servantunseen"   # partial match, case-insensitive
+# Known page ID from facebook.com/profile.php?id=61589795518432
+SERVANT_UNSEEN_PAGE_ID = "61589795518432"
 
 def _get_facebook_page():
     """
     Returns (page_id, page_access_token) for the ServantUnseen page.
-    Calls /me/accounts with the user token to list all managed pages,
-    then picks the one matching ServantUnseen.
+    Strategy:
+      1. Call /{page_id}?fields=access_token to get the page-specific token.
+      2. Fall back to /me/accounts scan if that fails.
     """
     global _FACEBOOK_PAGE_CACHE
     if _FACEBOOK_PAGE_CACHE:
@@ -49,45 +51,47 @@ def _get_facebook_page():
     if not token:
         return None, None
 
+    # Strategy 1: fetch page token directly using the known page ID
+    try:
+        r = requests.get(
+            f"https://graph.facebook.com/v21.0/{SERVANT_UNSEEN_PAGE_ID}",
+            params={"access_token": token, "fields": "id,name,access_token"},
+            timeout=10,
+        )
+        data = r.json()
+        if "access_token" in data:
+            page_token = data["access_token"]
+            page_id = data["id"]
+            print(f"✅ Facebook page token obtained: {data.get('name')} (ID: {page_id})")
+            _FACEBOOK_PAGE_CACHE = (page_id, page_token)
+            return page_id, page_token
+        else:
+            print(f"   Direct page lookup returned: {data}")
+    except Exception as e:
+        print(f"   Direct page lookup error: {e}")
+
+    # Strategy 2: scan /me/accounts
     try:
         r = requests.get(
             "https://graph.facebook.com/v21.0/me/accounts",
             params={"access_token": token, "fields": "id,name,access_token"},
             timeout=10,
         )
-        data = r.json()
-        pages = data.get("data", [])
-
-        if not pages:
-            print(f"⚠️ No pages found under this token: {data}")
-            return None, None
-
-        # Print all pages so we can debug
+        pages = r.json().get("data", [])
         for p in pages:
             print(f"   Found page: {p.get('name')} (ID: {p.get('id')})")
-
-        # Try to match ServantUnseen by name
-        match = next(
-            (p for p in pages if SERVANT_UNSEEN_PAGE_NAME_HINT in p.get("name", "").lower().replace(" ", "")),
-            None,
-        )
-        # Fall back to first page if only one exists
-        if not match and len(pages) == 1:
-            match = pages[0]
-
-        if match:
+        if pages:
+            match = next((p for p in pages if "servant" in p.get("name", "").lower()), pages[0])
             page_id = match["id"]
             page_token = match.get("access_token", token)
             print(f"✅ Using Facebook page: {match['name']} (ID: {page_id})")
             _FACEBOOK_PAGE_CACHE = (page_id, page_token)
             return page_id, page_token
-
-        print(f"⚠️ Could not find ServantUnseen in managed pages — found: {[p['name'] for p in pages]}")
-        return None, None
-
     except Exception as e:
-        print(f"⚠️ Facebook page lookup failed: {e}")
-        return None, None
+        print(f"   /me/accounts error: {e}")
+
+    print("⚠️ Could not obtain Facebook page token — add pages_manage_posts permission to the token")
+    return None, None
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
