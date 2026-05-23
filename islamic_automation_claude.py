@@ -30,7 +30,7 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
 # Use a Page Access Token for both Instagram and Facebook (more reliable than user token)
 FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
-INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN)
+INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
 _FACEBOOK_PAGE_CACHE = None   # (page_id, page_token) resolved at runtime
 
 # Known page ID from facebook.com/profile.php?id=61589795518432
@@ -730,8 +730,8 @@ def upload_to_youtube(video_path, title, description, tags):
 # ============================================================================
 
 def _active_instagram_token():
-    """Returns whichever Instagram token is set — page token preferred."""
-    return FACEBOOK_PAGE_ACCESS_TOKEN or INSTAGRAM_ACCESS_TOKEN
+    """Returns whichever Instagram token is set — Instagram-specific token preferred."""
+    return INSTAGRAM_ACCESS_TOKEN or FACEBOOK_PAGE_ACCESS_TOKEN
 
 
 def upload_to_instagram(video_public_url, caption):
@@ -741,7 +741,7 @@ def upload_to_instagram(video_public_url, caption):
     """
     token = _active_instagram_token()
     if not token or not INSTAGRAM_BUSINESS_ACCOUNT_ID:
-        print("⚠️ Instagram upload skipped — FACEBOOK_PAGE_ACCESS_TOKEN or INSTAGRAM_BUSINESS_ACCOUNT_ID not set")
+        print("⚠️ Instagram upload skipped — INSTAGRAM_ACCESS_TOKEN or INSTAGRAM_BUSINESS_ACCOUNT_ID not set")
         return None
 
     if not video_public_url or not video_public_url.startswith("https://"):
