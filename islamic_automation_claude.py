@@ -6,6 +6,7 @@ One video per day, 100% free
 
 import os
 import json
+import time
 from datetime import datetime, timedelta
 import requests
 from google.oauth2.credentials import Credentials
@@ -18,6 +19,20 @@ import subprocess
 import random
 from pathlib import Path
 
+
+def _retry(fn, attempts=3, delay=8, label=""):
+    """Call fn() up to `attempts` times, returning the first non-None result."""
+    for i in range(attempts):
+        try:
+            result = fn()
+            if result is not None:
+                return result
+        except Exception as e:
+            print(f"⚠️ {label} attempt {i + 1}/{attempts} failed: {e}")
+        if i < attempts - 1:
+            time.sleep(delay)
+    return None
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -28,10 +43,13 @@ YOUTUBE_CHANNEL_ID = os.getenv("YOUTUBE_CHANNEL_ID", "YOUR_YOUTUBE_CHANNEL_ID")
 
 # Instagram & Facebook
 INSTAGRAM_BUSINESS_ACCOUNT_ID = os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID", "")
-# Use a Page Access Token for both Instagram and Facebook (more reliable than user token)
 FACEBOOK_PAGE_ACCESS_TOKEN = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+META_APP_ID     = os.getenv("META_APP_ID", "")
+META_APP_SECRET = os.getenv("META_APP_SECRET", "")
 _FACEBOOK_PAGE_CACHE = None   # (page_id, page_token) resolved at runtime
+_GCS_TOKEN_CACHE = None       # refreshed Instagram token loaded from GCS
+TOKEN_BLOB_NAME  = "config/instagram_token.json"
 
 # Known page ID from facebook.com/profile.php?id=61589795518432
 SERVANT_UNSEEN_PAGE_ID = "61589795518432"
@@ -145,8 +163,8 @@ Rules:
 
 
 def generate_islamic_content():
-    """Calls Groq (free) to generate Islamic content using Llama 3."""
-    try:
+    """Calls Groq (free) to generate Islamic content using Llama 3. Retries up to 3×."""
+    def _attempt():
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json",
@@ -159,6 +177,13 @@ def generate_islamic_content():
         }
         response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
+        return response
+
+    try:
+        response = _retry(_attempt, attempts=3, delay=10, label="Groq API")
+        if response is None:
+            print("❌ Groq API failed after 3 attempts")
+            return get_fallback_content()
 
         response_text = response.json()["choices"][0]["message"]["content"].strip()
 
@@ -294,12 +319,13 @@ PEXELS_VIDEO_QUERIES = [
 def get_peaceful_islamic_image(theme="mosque"):
     """
     Returns (path, is_video).
-    Tries Pexels videos first, then Pexels photos, then fallback image.
+    Tries Pexels videos first (with retries), then Pexels photos, then fallback image.
     """
     # 1. Pexels VIDEO (best — real moving footage)
     if PEXELS_API_KEY:
         query = random.choice(PEXELS_VIDEO_QUERIES)
-        try:
+
+        def _try_pexels_video():
             headers = {"Authorization": PEXELS_API_KEY}
             r = requests.get(
                 "https://api.pexels.com/videos/search",
@@ -307,31 +333,35 @@ def get_peaceful_islamic_image(theme="mosque"):
                 params={"query": query, "orientation": "portrait", "per_page": 15, "size": "medium"},
                 timeout=15,
             )
-            if r.status_code == 200:
-                videos = r.json().get("videos", [])
-                if videos:
-                    video = random.choice(videos)
-                    # Pick the highest-quality portrait file
-                    files = sorted(
-                        video.get("video_files", []),
-                        key=lambda f: f.get("height", 0),
-                        reverse=True,
-                    )
-                    for vf in files:
-                        if vf.get("file_type") == "video/mp4":
-                            vid_data = requests.get(vf["link"], timeout=60, stream=True)
-                            if vid_data.status_code == 200:
-                                path = f"{VIDEO_DIR}/bg_video_{datetime.now().timestamp()}.mp4"
-                                with open(path, "wb") as f:
-                                    for chunk in vid_data.iter_content(chunk_size=65536):
-                                        f.write(chunk)
-                                print(f"✅ Downloaded Pexels video: {query}")
-                                return path, True
-        except Exception as e:
-            print(f"⚠️ Pexels video failed: {e}")
+            if r.status_code != 200:
+                raise Exception(f"HTTP {r.status_code}")
+            videos = r.json().get("videos", [])
+            if not videos:
+                return None
+            video = random.choice(videos)
+            files = sorted(
+                video.get("video_files", []),
+                key=lambda f: f.get("height", 0),
+                reverse=True,
+            )
+            for vf in files:
+                if vf.get("file_type") == "video/mp4":
+                    vid_data = requests.get(vf["link"], timeout=60, stream=True)
+                    if vid_data.status_code == 200:
+                        path = f"{VIDEO_DIR}/bg_video_{datetime.now().timestamp()}.mp4"
+                        with open(path, "wb") as f:
+                            for chunk in vid_data.iter_content(chunk_size=65536):
+                                f.write(chunk)
+                        print(f"✅ Downloaded Pexels video: {query}")
+                        return (path, True)
+            return None
+
+        result = _retry(_try_pexels_video, attempts=3, delay=8, label="Pexels video")
+        if result:
+            return result
 
         # 2. Pexels PHOTO fallback
-        try:
+        def _try_pexels_photo():
             headers = {"Authorization": PEXELS_API_KEY}
             r = requests.get(
                 "https://api.pexels.com/v1/search",
@@ -339,18 +369,22 @@ def get_peaceful_islamic_image(theme="mosque"):
                 params={"query": query, "orientation": "portrait", "per_page": 10},
                 timeout=15,
             )
-            if r.status_code == 200:
-                photos = r.json().get("photos", [])
-                if photos:
-                    photo = random.choice(photos)
-                    img_data = requests.get(photo["src"]["large2x"], timeout=30).content
-                    path = f"{IMAGE_DIR}/bg_{datetime.now().timestamp()}.jpg"
-                    with open(path, "wb") as f:
-                        f.write(img_data)
-                    print(f"✅ Downloaded Pexels photo: {query}")
-                    return path, False
-        except Exception as e:
-            print(f"⚠️ Pexels photo failed: {e}")
+            if r.status_code != 200:
+                raise Exception(f"HTTP {r.status_code}")
+            photos = r.json().get("photos", [])
+            if not photos:
+                return None
+            photo = random.choice(photos)
+            img_data = requests.get(photo["src"]["large2x"], timeout=30).content
+            path = f"{IMAGE_DIR}/bg_{datetime.now().timestamp()}.jpg"
+            with open(path, "wb") as f:
+                f.write(img_data)
+            print(f"✅ Downloaded Pexels photo: {query}")
+            return (path, False)
+
+        result = _retry(_try_pexels_photo, attempts=3, delay=8, label="Pexels photo")
+        if result:
+            return result
 
     print("⚠️ PEXELS_API_KEY not set — using generated background")
     return create_fallback_image(), False
@@ -729,8 +763,87 @@ def upload_to_youtube(video_path, title, description, tags):
 # STEP 7: UPLOAD TO INSTAGRAM (OPTIONAL)
 # ============================================================================
 
+def _load_token_from_gcs():
+    """Load the most recently refreshed Instagram token from GCS."""
+    if not GCS_BUCKET_NAME:
+        return None
+    try:
+        client = _gcs_client()
+        blob = client.bucket(GCS_BUCKET_NAME).blob(TOKEN_BLOB_NAME)
+        if blob.exists():
+            data = json.loads(blob.download_as_text())
+            token = data.get("access_token", "")
+            saved_at = data.get("saved_at", "unknown")
+            if token:
+                print(f"✅ Loaded Instagram token from GCS (saved: {saved_at})")
+                return token
+    except Exception as e:
+        print(f"⚠️ Could not load token from GCS: {e}")
+    return None
+
+
+def _save_token_to_gcs(token):
+    """Persist the refreshed Instagram token to GCS for future runs."""
+    if not GCS_BUCKET_NAME:
+        return
+    try:
+        client = _gcs_client()
+        blob = client.bucket(GCS_BUCKET_NAME).blob(TOKEN_BLOB_NAME)
+        blob.upload_from_string(
+            json.dumps({"access_token": token, "saved_at": datetime.now().isoformat()}),
+            content_type="application/json",
+        )
+        print("✅ Saved refreshed Instagram token to GCS")
+    except Exception as e:
+        print(f"⚠️ Could not save token to GCS: {e}")
+
+
+def refresh_instagram_token():
+    """
+    Exchanges the current token for a long-lived one (~60 days) using the Meta API.
+    Saves the new token to GCS so every future run picks it up automatically.
+    Requires META_APP_ID and META_APP_SECRET secrets.
+    """
+    token = INSTAGRAM_ACCESS_TOKEN or FACEBOOK_PAGE_ACCESS_TOKEN
+    if not META_APP_ID or not META_APP_SECRET or not token:
+        print("⚠️ Token auto-refresh skipped — META_APP_ID/META_APP_SECRET not set")
+        return token
+    try:
+        r = requests.get(
+            "https://graph.facebook.com/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": META_APP_ID,
+                "client_secret": META_APP_SECRET,
+                "fb_exchange_token": token,
+            },
+            timeout=15,
+        )
+        data = r.json()
+        if "access_token" in data:
+            new_token = data["access_token"]
+            expires_in = data.get("expires_in", "unknown")
+            print(f"✅ Instagram token refreshed (expires in {expires_in}s ≈ 60 days)")
+            _save_token_to_gcs(new_token)
+            global _GCS_TOKEN_CACHE
+            _GCS_TOKEN_CACHE = new_token
+            return new_token
+        else:
+            print(f"⚠️ Token refresh failed: {data}")
+    except Exception as e:
+        print(f"⚠️ Token refresh error: {e}")
+    return token
+
+
 def _active_instagram_token():
-    """Returns whichever Instagram token is set — Instagram-specific token preferred."""
+    """Returns the best available Instagram token (GCS refreshed > env var > FB token)."""
+    global _GCS_TOKEN_CACHE
+    if _GCS_TOKEN_CACHE:
+        return _GCS_TOKEN_CACHE
+    gcs_token = _load_token_from_gcs()
+    if gcs_token:
+        _GCS_TOKEN_CACHE = gcs_token
+        return gcs_token
     return INSTAGRAM_ACCESS_TOKEN or FACEBOOK_PAGE_ACCESS_TOKEN
 
 
@@ -891,7 +1004,7 @@ def upload_video_to_gcs(video_path):
         )
         signed_url = blob.generate_signed_url(
             version="v4",
-            expiration=timedelta(hours=1),
+            expiration=timedelta(hours=2),
             method="GET",
             credentials=sa_creds,
         )
@@ -982,8 +1095,11 @@ def main():
         youtube_tags
     )
     
-    # STEP 7: Upload to GCS → Instagram + Facebook → clean up GCS
-    print("\n📸 Step 7: Uploading to Instagram & Facebook via GCS...")
+    # STEP 7: Refresh Instagram token, upload to GCS → Instagram + Facebook → clean up GCS
+    print("\n🔑 Step 7a: Refreshing Instagram token...")
+    refresh_instagram_token()
+
+    print("\n📸 Step 7b: Uploading to Instagram & Facebook via GCS...")
     gcs_url, gcs_blob = upload_video_to_gcs(video_path)
     description = content_data.get('youtube_description', '')
     title = f"{content_data['topic']} - Islamic Teaching"
